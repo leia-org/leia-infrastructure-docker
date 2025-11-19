@@ -1,0 +1,89 @@
+services:
+  # DATABASE SERVICES
+  mongodb-catalog:
+    restart: unless-stopped
+    image: mongo:latest
+    container_name: mongodb-catalog-public
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_USERNAME}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_PASSWORD}
+    ports:
+      - '${MONGO_PORT_CATALOG}:27017'
+    volumes:
+      - mongo-catalog:/data/db
+    networks:
+      - leia-public-network
+
+  redis:
+    restart: unless-stopped
+    image: redis:latest
+    container_name: redis-public
+    ports:
+      - '${REDIS_PORT}:6379'
+    volumes:
+      - redis-data:/data
+    networks:
+      - leia-public-network
+
+  # BACKEND SERVICES
+  manager:
+    restart: unless-stopped
+    image: ghcr.io/leia-org/leia-manager:latest
+    container_name: manager-public
+    environment:
+      - MONGO_URI=mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@mongodb-catalog:27017/catalog?authSource=admin
+      - FRONTEND_URL=${FRONTEND_URL_PUBLIC}
+      - NODE_ENV=${NODE_ENV}
+      - PORT=80
+      - JWT_SECRET=${JWT_SECRET}
+      - DEFAULT_ADMIN_EMAIL=${DEFAULT_ADMIN_EMAIL}
+      - DEFAULT_ADMIN_PASSWORD=${DEFAULT_ADMIN_PASSWORD}
+      - API_KEY=${API_KEY}
+      - RUNNER_URL=${RUNNER_URL}
+      - RUNNER_KEY=${RUNNER_KEY}
+    depends_on:
+      - mongodb-catalog
+    ports:
+      - '${PORT_MANAGER}:80'
+    networks:
+      - leia-public-network
+
+  runner:
+    restart: unless-stopped
+    image: ghcr.io/leia-org/leia-runner:latest
+    container_name: runner-public
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - NODE_ENV=${NODE_ENV}
+      - PORT=80
+      - RUNNER_KEY=${RUNNER_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_EVALUATION_MODEL=${OPENAI_EVALUATION_MODEL:-gpt-4o}
+      - DEFAULT_MODEL=${DEFAULT_MODEL:-openai}
+    depends_on:
+      - redis
+    ports:
+      - '${PORT_RUNNER}:80'
+    networks:
+      - leia-public-network
+
+  # FRONTEND SERVICES
+  workbench-front-public:
+    restart: unless-stopped
+    image: ghcr.io/leia-org/leia-workbench-front-public:latest
+    container_name: workbench-front-public
+    environment:
+      - PORT=3000
+      - NODE_ENV=${NODE_ENV}
+    ports:
+      - '${PORT_WORKBENCH_FRONT_PUBLIC}:3000'
+    networks:
+      - leia-public-network
+
+volumes:
+  mongo-catalog:
+  redis-data:
+
+networks:
+  leia-public-network:
+    driver: bridge

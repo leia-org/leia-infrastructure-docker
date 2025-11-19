@@ -1,0 +1,88 @@
+services:
+  # DATABASE SERVICES
+  mongodb-workbench:
+    restart: unless-stopped
+    image: mongo:latest
+    container_name: mongodb-workbench-private
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_USERNAME}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_PASSWORD}
+    ports:
+      - '${MONGO_PORT_WORKBENCH}:27017'
+    volumes:
+      - mongo-workbench:/data/db
+    networks:
+      - leia-private-network
+
+  redis:
+    restart: unless-stopped
+    image: redis:latest
+    container_name: redis-private
+    ports:
+      - '${REDIS_PORT}:6379'
+    volumes:
+      - redis-data:/data
+    networks:
+      - leia-private-network
+
+  # BACKEND SERVICES
+  workbench-back:
+    restart: unless-stopped
+    image: ghcr.io/leia-org/leia-workbench-back:latest
+    container_name: workbench-back-private
+    environment:
+      - MONGO_URI=mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@mongodb-workbench:27017/workbench?authSource=admin
+      - FRONTEND_URL=${FRONTEND_URL_PRIVATE}
+      - RUNNER_URL=${RUNNER_URL}
+      - RUNNER_KEY=${RUNNER_KEY}
+      - MANAGER_URL=${MANAGER_URL}
+      - MANAGER_KEY=${MANAGER_KEY}
+      - NODE_ENV=${NODE_ENV}
+      - PORT=80
+      - ADMIN_SECRET=${ADMIN_SECRET}
+    depends_on:
+      - mongodb-workbench
+    ports:
+      - '${PORT_WORKBENCH_BACK}:80'
+    networks:
+      - leia-private-network
+
+  runner:
+    restart: unless-stopped
+    image: ghcr.io/leia-org/leia-runner:latest
+    container_name: runner-private
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - NODE_ENV=${NODE_ENV}
+      - PORT=80
+      - RUNNER_KEY=${RUNNER_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_EVALUATION_MODEL=${OPENAI_EVALUATION_MODEL:-gpt-4o}
+      - DEFAULT_MODEL=${DEFAULT_MODEL:-openai}
+    depends_on:
+      - redis
+    ports:
+      - '${PORT_RUNNER}:80'
+    networks:
+      - leia-private-network
+
+  # FRONTEND SERVICES
+  workbench-front-private:
+    restart: unless-stopped
+    image: ghcr.io/leia-org/leia-workbench-front-private:latest
+    container_name: workbench-front-private
+    environment:
+      - PORT=3000
+      - NODE_ENV=${NODE_ENV}
+    ports:
+      - '${PORT_WORKBENCH_FRONT_PRIVATE}:3000'
+    networks:
+      - leia-private-network
+
+volumes:
+  mongo-workbench:
+  redis-data:
+
+networks:
+  leia-private-network:
+    driver: bridge
