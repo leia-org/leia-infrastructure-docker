@@ -8,10 +8,10 @@ The LEIA system consists of 5 main components:
 
 | Component | Repository | Docker Image | Description |
 |-----------|------------|--------------|-------------|
-| Designer Backend | `leia-designer-backend` | `leia-manager` | Catalog backend service for managing LEIAs, personas, behaviors, and problems |
-| Designer Frontend | `leia-designer-frontend` | `leia-workbench-front-public` | Public frontend for creating and browsing LEIA configurations |
-| Workbench Backend | `leia-workbench-backend` | `leia-workbench-back` | Backend for running experiments and managing replications |
-| Workbench Frontend | `leia-workbench-frontend` | `leia-workbench-front-private` | Private frontend for conducting experiments with participants |
+| Designer Backend | `leia-designer-backend` | `leia-designer-backend` | Backend service for managing LEIAs, personas, behaviors, and problems (public) |
+| Designer Frontend | `leia-designer-frontend` | `leia-designer-frontend` | Frontend for creating and browsing LEIA configurations (public) |
+| Workbench Backend | `leia-workbench-backend` | `leia-workbench-backend` | Backend for running experiments and managing replications (private) |
+| Workbench Frontend | `leia-workbench-frontend` | `leia-workbench-frontend` | Frontend for conducting experiments with participants (private) |
 | Runner | `leia-runner` | `leia-runner` | AI model execution service that handles LLM interactions |
 
 ## Prerequisites
@@ -34,15 +34,15 @@ The LEIA system consists of 5 main components:
 ### Full System
 - `docker-compose.yaml` - Complete system with all 5 services
 
-### Public Services Only
+### Designer Services Only (Public)
 - `docker-compose-public.yaml` - Designer Backend, Runner, and Designer Frontend
-  - Services: Designer Backend (Manager), Runner, Designer Frontend (Workbench Front Public)
-  - Databases: MongoDB (catalog), Redis
+  - Services: Designer Backend, Runner, Designer Frontend
+  - Databases: MongoDB (designer), Redis
   - Use case: Creating and managing LEIA configurations
 
-### Private Services Only  
+### Workbench Services Only (Private)
 - `docker-compose-private.yaml` - Workbench Backend, Runner, and Workbench Frontend
-  - Services: Workbench Backend (Workbench Back), Runner, Workbench Frontend (Workbench Front Private)
+  - Services: Workbench Backend, Runner, Workbench Frontend
   - Databases: MongoDB (workbench), Redis
   - Use case: Running experiments with participants
 
@@ -50,12 +50,12 @@ The LEIA system consists of 5 main components:
 
 | Service | Container Name | Port | Description |
 |---------|----------------|------|-------------|
-| Designer Backend | `manager` | 3001 | Catalog backend API for LEIAs, personas, behaviors, problems |
-| Workbench Backend | `workbench-back` | 3002 | Experiment management and replication API |
+| Designer Backend | `designer-backend` | 3001 | Backend API for LEIAs, personas, behaviors, problems (public) |
+| Workbench Backend | `workbench-backend` | 3002 | Experiment management and replication API (private) |
 | Runner | `runner` | 3003 | AI model execution and LLM interaction API |
-| Designer Frontend | `workbench-front-public` | 3004 | Public UI for creating LEIA configurations |
-| Workbench Frontend | `workbench-front-private` | 3005 | Private UI for running experiments |
-| MongoDB Catalog | `mongodb-catalog` | 27017 | Database for catalog (LEIAs, personas, etc.) |
+| Designer Frontend | `designer-frontend` | 3004 | Frontend for creating LEIA configurations (public) |
+| Workbench Frontend | `workbench-frontend` | 3005 | Frontend for running experiments (private) |
+| MongoDB Designer | `mongodb-designer` | 27017 | Database for designer (LEIAs, personas, etc.) |
 | MongoDB Workbench | `mongodb-workbench` | 27018 | Database for experiments and sessions |
 | Redis | `redis` | 6379 | Cache and session store |
 
@@ -66,15 +66,15 @@ Create a `.env` file with the following variables:
 ### Database
 - `MONGO_USERNAME` - MongoDB root username
 - `MONGO_PASSWORD` - MongoDB root password
-- `MONGO_PORT_CATALOG` - Port for catalog database (default: 27017)
+- `MONGO_PORT_DESIGNER` - Port for designer database (default: 27017)
 - `MONGO_PORT_WORKBENCH` - Port for workbench database (default: 27018)
 - `REDIS_PORT` - Redis port (default: 6379)
 
 ### Security & Authentication
 - `JWT_SECRET` - Secret key for JWT token signing
-- `API_KEY` - API key for manager service authentication
+- `API_KEY` - API key for designer backend authentication
 - `RUNNER_KEY` - Authentication key for runner service
-- `MANAGER_KEY` - Authentication key for manager service
+- `DESIGNER_BACKEND_KEY` - Authentication key for designer backend service
 - `ADMIN_SECRET` - Admin secret for workbench
 - `OPENAI_API_KEY` - OpenAI API key for LLM interactions (required)
 
@@ -88,20 +88,20 @@ Create a `.env` file with the following variables:
 - `DEFAULT_MODEL` - Default model provider (default: openai)
 
 ### Service URLs (Internal)
-- `MANAGER_URL` - Manager service URL (e.g., http://manager:80)
-- `WORKBENCH_BACK_URL` - Workbench backend URL (e.g., http://workbench-back:80)
+- `DESIGNER_BACKEND_URL` - Designer backend service URL (e.g., http://designer-backend:80)
+- `WORKBENCH_BACKEND_URL` - Workbench backend URL (e.g., http://workbench-backend:80)
 - `RUNNER_URL` - Runner service URL (e.g., http://runner:80)
 
 ### Frontend URLs
-- `FRONTEND_URL_PUBLIC` - Public frontend URL (e.g., http://localhost:3004)
-- `FRONTEND_URL_PRIVATE` - Private frontend URL (e.g., http://localhost:3005)
+- `DESIGNER_FRONTEND_URL` - Designer frontend URL (e.g., http://localhost:3004)
+- `WORKBENCH_FRONTEND_URL` - Workbench frontend URL (e.g., http://localhost:3005)
 
 ### Service Ports (External)
-- `PORT_MANAGER` - External port for manager (default: 3001)
-- `PORT_WORKBENCH_BACK` - External port for workbench backend (default: 3002)
+- `PORT_DESIGNER_BACKEND` - External port for designer backend (default: 3001)
+- `PORT_WORKBENCH_BACKEND` - External port for workbench backend (default: 3002)
 - `PORT_RUNNER` - External port for runner (default: 3003)
-- `PORT_WORKBENCH_FRONT_PUBLIC` - External port for public frontend (default: 3004)
-- `PORT_WORKBENCH_FRONT_PRIVATE` - External port for private frontend (default: 3005)
+- `PORT_DESIGNER_FRONTEND` - External port for designer frontend (default: 3004)
+- `PORT_WORKBENCH_FRONTEND` - External port for workbench frontend (default: 3005)
 
 ## Development
 
@@ -121,7 +121,7 @@ This optimization is recommended once the current setup is validated and stable.
 # Database
 MONGO_USERNAME=admin
 MONGO_PASSWORD=changeme
-MONGO_PORT_CATALOG=27017
+MONGO_PORT_DESIGNER=27017
 MONGO_PORT_WORKBENCH=27018
 REDIS_PORT=6379
 
@@ -129,7 +129,7 @@ REDIS_PORT=6379
 JWT_SECRET=your-jwt-secret-here
 API_KEY=your-api-key-here
 RUNNER_KEY=your-runner-key-here
-MANAGER_KEY=your-manager-key-here
+DESIGNER_BACKEND_KEY=your-designer-backend-key-here
 ADMIN_SECRET=your-admin-secret-here
 OPENAI_API_KEY=sk-your-openai-api-key-here
 
@@ -143,20 +143,20 @@ OPENAI_EVALUATION_MODEL=gpt-4o
 DEFAULT_MODEL=openai
 
 # Service URLs (Internal - Docker network)
-MANAGER_URL=http://manager:80
-WORKBENCH_BACK_URL=http://workbench-back:80
+DESIGNER_BACKEND_URL=http://designer-backend:80
+WORKBENCH_BACKEND_URL=http://workbench-backend:80
 RUNNER_URL=http://runner:80
 
 # Frontend URLs (External)
-FRONTEND_URL_PUBLIC=http://localhost:3004
-FRONTEND_URL_PRIVATE=http://localhost:3005
+DESIGNER_FRONTEND_URL=http://localhost:3004
+WORKBENCH_FRONTEND_URL=http://localhost:3005
 
 # Service Ports (External)
-PORT_MANAGER=3001
-PORT_WORKBENCH_BACK=3002
+PORT_DESIGNER_BACKEND=3001
+PORT_WORKBENCH_BACKEND=3002
 PORT_RUNNER=3003
-PORT_WORKBENCH_FRONT_PUBLIC=3004
-PORT_WORKBENCH_FRONT_PRIVATE=3005
+PORT_DESIGNER_FRONTEND=3004
+PORT_WORKBENCH_FRONTEND=3005
 ```
 
 ## Security Notes
