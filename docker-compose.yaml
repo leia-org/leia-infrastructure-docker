@@ -1,16 +1,16 @@
 services:
   # DATABASE SERVICES
-  mongodb-catalog:
+  mongodb-designer:
     restart: unless-stopped
     image: mongo:latest
-    container_name: mongodb-catalog
+    container_name: mongodb-designer
     environment:
       - MONGO_INITDB_ROOT_USERNAME=${MONGO_USERNAME}
       - MONGO_INITDB_ROOT_PASSWORD=${MONGO_PASSWORD}
     ports:
-      - '${MONGO_PORT_CATALOG}:27017'
+      - '${MONGO_PORT_DESIGNER}:27017'
     volumes:
-      - mongo-catalog:/data/db
+      - mongo-designer:/data/db
     networks:
       - leia-network
 
@@ -40,13 +40,13 @@ services:
       - leia-network
 
   # BACKEND SERVICES
-  manager:
+  designer-backend:
     restart: unless-stopped
-    image: ghcr.io/leia-org/leia-manager:latest
-    container_name: manager
+    image: ghcr.io/leia-org/leia-designer-backend:latest
+    container_name: designer-backend
     environment:
-      - MONGO_URI=mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@mongodb-catalog:27017/catalog?authSource=admin
-      - FRONTEND_URL=${FRONTEND_URL_PUBLIC}
+      - MONGO_URI=mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@mongodb-designer:27017/designer?authSource=admin
+      - FRONTEND_URL=${DESIGNER_FRONTEND_URL}
       - NODE_ENV=${NODE_ENV}
       - PORT=80
       - JWT_SECRET=${JWT_SECRET}
@@ -56,30 +56,30 @@ services:
       - RUNNER_URL=${RUNNER_URL}
       - RUNNER_KEY=${RUNNER_KEY}
     depends_on:
-      - mongodb-catalog
+      - mongodb-designer
     ports:
-      - '${PORT_MANAGER}:80'
+      - '${PORT_DESIGNER_BACKEND}:80'
     networks:
       - leia-network
 
-  workbench-back:
+  workbench-backend:
     restart: unless-stopped
-    image: ghcr.io/leia-org/leia-workbench-back:latest
-    container_name: workbench-back
+    image: ghcr.io/leia-org/leia-workbench-backend:latest
+    container_name: workbench-backend
     environment:
       - MONGO_URI=mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@mongodb-workbench:27017/workbench?authSource=admin
-      - FRONTEND_URL=${FRONTEND_URL_PRIVATE}
+      - FRONTEND_URL=${WORKBENCH_FRONTEND_URL}
       - RUNNER_URL=${RUNNER_URL}
       - RUNNER_KEY=${RUNNER_KEY}
-      - MANAGER_URL=${MANAGER_URL}
-      - MANAGER_KEY=${MANAGER_KEY}
+      - DESIGNER_BACKEND_URL=${DESIGNER_BACKEND_URL}
+      - DESIGNER_BACKEND_KEY=${DESIGNER_BACKEND_KEY}
       - NODE_ENV=${NODE_ENV}
       - PORT=80
       - ADMIN_SECRET=${ADMIN_SECRET}
     depends_on:
       - mongodb-workbench
     ports:
-      - '${PORT_WORKBENCH_BACK}:80'
+      - '${PORT_WORKBENCH_BACKEND}:80'
     networks:
       - leia-network
 
@@ -103,32 +103,32 @@ services:
       - leia-network
 
   # FRONTEND SERVICES
-  workbench-front-public:
+  designer-frontend:
     restart: unless-stopped
-    image: ghcr.io/leia-org/leia-workbench-front-public:latest
-    container_name: workbench-front-public
+    image: ghcr.io/leia-org/leia-designer-frontend:latest
+    container_name: designer-frontend
     environment:
       - PORT=3000
       - NODE_ENV=${NODE_ENV}
     ports:
-      - '${PORT_WORKBENCH_FRONT_PUBLIC}:3000'
+      - '${PORT_DESIGNER_FRONTEND}:3000'
     networks:
       - leia-network
 
-  workbench-front-private:
+  workbench-frontend:
     restart: unless-stopped
-    image: ghcr.io/leia-org/leia-workbench-front-private:latest
-    container_name: workbench-front-private
+    image: ghcr.io/leia-org/leia-workbench-frontend:latest
+    container_name: workbench-frontend
     environment:
       - PORT=3000
       - NODE_ENV=${NODE_ENV}
     ports:
-      - '${PORT_WORKBENCH_FRONT_PRIVATE}:3000'
+      - '${PORT_WORKBENCH_FRONTEND}:3000'
     networks:
       - leia-network
 
 volumes:
-  mongo-catalog:
+  mongo-designer:
   mongo-workbench:
   redis-data:
 
