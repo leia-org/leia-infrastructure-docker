@@ -1,36 +1,22 @@
 services:
-  # DATABASE SERVICES
-  mongodb-designer:
+  # INFRASTRUCTURE SERVICES
+  mongodb:
     restart: unless-stopped
-    image: mongo:latest
-    container_name: mongodb-designer
+    image: docker.io/library/mongo:latest
+    container_name: mongodb
     environment:
       - MONGO_INITDB_ROOT_USERNAME=${MONGO_USERNAME}
       - MONGO_INITDB_ROOT_PASSWORD=${MONGO_PASSWORD}
     ports:
-      - '${MONGO_PORT_DESIGNER}:27017'
+      - '${MONGO_PORT}:27017'
     volumes:
-      - mongo-designer:/data/db
-    networks:
-      - leia-network
-
-  mongodb-workbench:
-    restart: unless-stopped
-    image: mongo:latest
-    container_name: mongodb-workbench
-    environment:
-      - MONGO_INITDB_ROOT_USERNAME=${MONGO_USERNAME}
-      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_PASSWORD}
-    ports:
-      - '${MONGO_PORT_WORKBENCH}:27017'
-    volumes:
-      - mongo-workbench:/data/db
+      - mongodb-data:/data/db
     networks:
       - leia-network
 
   redis:
     restart: unless-stopped
-    image: redis:latest
+    image: docker.io/library/redis:latest
     container_name: redis
     ports:
       - '${REDIS_PORT}:6379'
@@ -39,14 +25,64 @@ services:
     networks:
       - leia-network
 
+  minio:
+    restart: unless-stopped
+    image: quay.io/minio/minio:latest
+    container_name: minio
+    command: server /data --console-address ":9001"
+    environment:
+      - MINIO_ROOT_USER=${S3_ACCESS_KEY_ID:-minio}
+      - MINIO_ROOT_PASSWORD=${S3_SECRET_ACCESS_KEY:-minio123}
+    ports:
+      - '${S3_PORT:-9000}:9000'
+      - '${S3_CONSOLE_PORT:-9001}:9001'
+    volumes:
+      - minio-data:/data
+    networks:
+      - leia-network
+
   # BACKEND SERVICES
+  auth:
+    restart: unless-stopped
+    image: leia-auth:latest
+    build:
+      context: ../leia-auth
+      dockerfile: Dockerfile
+    container_name: auth
+    environment:
+      - MONGO_URI=mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@mongodb:27017/auth?authSource=admin
+      - DEFAULT_ADMIN_EMAIL=${DEFAULT_ADMIN_EMAIL}
+      - DEFAULT_ADMIN_PASSWORD=${DEFAULT_ADMIN_PASSWORD}
+      - API_KEY_STORAGE_SECRET=${API_KEY_STORAGE_SECRET}
+      - PORT=80
+      - NODE_ENV=${NODE_ENV}
+      - JWT_SECRET=${JWT_SECRET}
+      - API_KEY=${API_KEY}
+      - RUNNER_URL=${RUNNER_URL}
+      - RUNNER_KEY=${RUNNER_KEY}
+      - WORKBENCH_FRONTEND_URL=${WORKBENCH_FRONTEND_URL}
+      - DESIGNER_FRONTEND_URL=${DESIGNER_FRONTEND_URL}
+      - INTERN_TOKEN=${INTERN_TOKEN}
+      - TURNSTILE_ENABLED=${TURNSTILE_ENABLED:-false}
+      - CLOUDFLARE_SECRET_KEY=${CLOUDFLARE_SECRET_KEY:-}
+    depends_on:
+      - mongodb
+    ports:
+      - '${PORT_AUTH}:80'
+    networks:
+      - leia-network
+
   designer-backend:
     restart: unless-stopped
-    image: ghcr.io/leia-org/leia-designer-backend:latest
+    image: leia-designer-backend:latest
+    build:
+      context: ../leia-designer-backend
+      dockerfile: Dockerfile
     container_name: designer-backend
     environment:
-      - MONGO_URI=mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@mongodb-designer:27017/designer?authSource=admin
+      - MONGO_URI=mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@mongodb:27017/designer?authSource=admin
       - FRONTEND_URL=${DESIGNER_FRONTEND_URL}
+      - WORKBENCH_FRONTEND_URL=${WORKBENCH_FRONTEND_URL}
       - NODE_ENV=${NODE_ENV}
       - PORT=80
       - JWT_SECRET=${JWT_SECRET}
@@ -55,8 +91,20 @@ services:
       - API_KEY=${API_KEY}
       - RUNNER_URL=${RUNNER_URL}
       - RUNNER_KEY=${RUNNER_KEY}
+      - AUTH_SERVICE_URL=${AUTH_SERVICE_URL}
+      - WORKBENCH_BACKEND_URL=${WORKBENCH_BACKEND_URL}
+      - INTERN_TOKEN=${INTERN_TOKEN}
+      - S3_ENDPOINT=${S3_ENDPOINT:-http://minio:9000}
+      - S3_REGION=${S3_REGION:-auto}
+      - S3_BUCKET=${S3_BUCKET:-leia-images}
+      - S3_ACCESS_KEY_ID=${S3_ACCESS_KEY_ID:-minio}
+      - S3_SECRET_ACCESS_KEY=${S3_SECRET_ACCESS_KEY:-minio123}
+      - S3_FORCE_PATH_STYLE=${S3_FORCE_PATH_STYLE:-true}
+      - S3_PUBLIC_READ=${S3_PUBLIC_READ:-true}
     depends_on:
-      - mongodb-designer
+      - mongodb
+      - auth
+      - minio
     ports:
       - '${PORT_DESIGNER_BACKEND}:80'
     networks:
@@ -64,20 +112,29 @@ services:
 
   workbench-backend:
     restart: unless-stopped
-    image: ghcr.io/leia-org/leia-workbench-backend:latest
+    image: leia-workbench-backend:latest
+    build:
+      context: ../leia-workbench-backend
+      dockerfile: Dockerfile
     container_name: workbench-backend
     environment:
-      - MONGO_URI=mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@mongodb-workbench:27017/workbench?authSource=admin
+      - MONGO_URI=mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@mongodb:27017/workbench?authSource=admin
       - FRONTEND_URL=${WORKBENCH_FRONTEND_URL}
       - RUNNER_URL=${RUNNER_URL}
       - RUNNER_KEY=${RUNNER_KEY}
-      - DESIGNER_BACKEND_URL=${DESIGNER_BACKEND_URL}
-      - DESIGNER_BACKEND_KEY=${DESIGNER_BACKEND_KEY}
+      - MANAGER_URL=${DESIGNER_BACKEND_URL}
+      - MANAGER_KEY=${API_KEY}
+      - AUTH_URL=${AUTH_SERVICE_URL}
       - NODE_ENV=${NODE_ENV}
       - PORT=80
       - ADMIN_SECRET=${ADMIN_SECRET}
+      - JWT_SECRET=${JWT_SECRET}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - INTERN_TOKEN=${INTERN_TOKEN}
     depends_on:
-      - mongodb-workbench
+      - mongodb
+      - auth
     ports:
       - '${PORT_WORKBENCH_BACKEND}:80'
     networks:
@@ -85,7 +142,10 @@ services:
 
   runner:
     restart: unless-stopped
-    image: ghcr.io/leia-org/leia-runner:latest
+    image: leia-runner:latest
+    build:
+      context: ../leia-runner
+      dockerfile: Dockerfile
     container_name: runner
     environment:
       - REDIS_URL=redis://redis:6379
@@ -93,10 +153,17 @@ services:
       - PORT=80
       - RUNNER_KEY=${RUNNER_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - OPENAI_EVALUATION_MODEL=${OPENAI_EVALUATION_MODEL:-gpt-4o}
-      - DEFAULT_MODEL=${DEFAULT_MODEL:-openai}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - OPENAI_EVALUATION_MODEL=${OPENAI_EVALUATION_MODEL:-gpt-5.4-mini}
+      - DEFAULT_MODEL=${DEFAULT_MODEL:-openai-responses}
+      - VITE_AUTH_SERVICE_BACKEND=${AUTH_SERVICE_URL}
+      - INTERN_TOKEN=${INTERN_TOKEN}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
     depends_on:
       - redis
+      - auth
     ports:
       - '${PORT_RUNNER}:80'
     networks:
@@ -105,32 +172,38 @@ services:
   # FRONTEND SERVICES
   designer-frontend:
     restart: unless-stopped
-    image: ghcr.io/leia-org/leia-designer-frontend:latest
+    image: leia-designer-frontend:latest
+    build:
+      context: ../leia-designer-frontend
+      dockerfile: Dockerfile
     container_name: designer-frontend
     environment:
-      - PORT=3000
+      - PORT=80
       - NODE_ENV=${NODE_ENV}
     ports:
-      - '${PORT_DESIGNER_FRONTEND}:3000'
+      - '${PORT_DESIGNER_FRONTEND}:80'
     networks:
       - leia-network
 
   workbench-frontend:
     restart: unless-stopped
-    image: ghcr.io/leia-org/leia-workbench-frontend:latest
+    image: leia-workbench-frontend:latest
+    build:
+      context: ../leia-workbench-frontend
+      dockerfile: Dockerfile
     container_name: workbench-frontend
     environment:
-      - PORT=3000
+      - PORT=80
       - NODE_ENV=${NODE_ENV}
     ports:
-      - '${PORT_WORKBENCH_FRONTEND}:3000'
+      - '${PORT_WORKBENCH_FRONTEND}:80'
     networks:
       - leia-network
 
 volumes:
-  mongo-designer:
-  mongo-workbench:
+  mongodb-data:
   redis-data:
+  minio-data:
 
 networks:
   leia-network:

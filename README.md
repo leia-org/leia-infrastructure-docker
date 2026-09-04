@@ -1,167 +1,83 @@
 # LEIA Infrastructure Docker
 
-This repository contains Docker Compose configurations for the complete LEIA system infrastructure.
+Este repositorio contiene la configuración unificada de Docker Compose para desplegar toda la infraestructura del sistema LEIA con un único comando.
 
-## Overview
+## Descripción General
 
-The LEIA system consists of 5 main components:
+El sistema LEIA consta de 6 microservicios y sus bases de datos:
 
-| Component | Repository | Docker Image | Description |
-|-----------|------------|--------------|-------------|
-| Designer Backend | `leia-designer-backend` | `leia-designer-backend` | Backend service for managing LEIAs, personas, behaviors, and problems (public) |
-| Designer Frontend | `leia-designer-frontend` | `leia-designer-frontend` | Frontend for creating and browsing LEIA configurations (public) |
-| Workbench Backend | `leia-workbench-backend` | `leia-workbench-backend` | Backend for running experiments and managing replications (private) |
-| Workbench Frontend | `leia-workbench-frontend` | `leia-workbench-frontend` | Frontend for conducting experiments with participants (private) |
-| Runner | `leia-runner` | `leia-runner` | AI model execution service that handles LLM interactions |
+| Component | Repositorio | Imagen Docker | Puerto Host por Defecto | Descripción |
+|------------|-------------|---------------|-------------------------|-------------|
+| **Auth** | `leia-auth` | `ghcr.io/leia-org/leia-auth:latest` | `3005` | Microservicio central de autenticación y gestión de API keys |
+| **Designer Backend** | `leia-designer-backend` | `ghcr.io/leia-org/leia-designer-backend:latest` | `3000` | API backend para gestión de LEIAs, personas, comportamientos y problemas |
+| **Designer Frontend** | `leia-designer-frontend` | `ghcr.io/leia-org/leia-designer-frontend:latest` | `5173` | Interfaz web para diseño y configuración de LEIAs |
+| **Workbench Backend** | `leia-workbench-backend` | `ghcr.io/leia-org/leia-workbench-backend:latest` | `3001` | API backend para gestión y ejecución de experimentos y réplicas |
+| **Workbench Frontend** | `leia-workbench-frontend` | `ghcr.io/leia-org/leia-workbench-frontend:latest` | `8080` | Interfaz web para participantes e investigadores del Workbench |
+| **Runner** | `leia-runner` | `ghcr.io/leia-org/leia-runner:latest` | `5002` | Motor de ejecución de sesiones IA e interacción con LLMs |
+| **MongoDB** | `mongo:latest` | - | `27017` | Base de datos MongoDB unificada (alberga las DBs `auth`, `designer`, `workbench`) |
+| **Redis** | `redis:latest` | - | `6379` | Cache y gestión de sesiones para Runner |
+| **MinIO (S3)** | `quay.io/minio/minio:latest` | - | `9000` (API) / `9001` (Consola) | Almacenamiento de objetos S3 local para imágenes del Designer |
 
-## Prerequisites
+---
 
-- Docker and Docker Compose installed
-- All 5 projects must have Docker images published to GitHub Container Registry
-- GitHub Actions workflows configured for each project to build and push images
+## Requisitos Previos
 
-## Quick Start
+- Docker y Docker Compose instalados en tu sistema.
+- Clave de API de OpenAI (requerida por el servicio `runner`).
 
-1. Create a `.env` file in this directory with your configuration values (see Environment Variables section below)
+---
 
-2. Start the full system:
+## Inicio Rápido (Quick Start)
+
+1. Crea tu archivo de variables de entorno copiando `.env.example`:
    ```bash
-   docker-compose up -d
+   cp .env.example .env
    ```
 
-## Configuration Files
+2. Configura tus credenciales y claves en `.env`
 
-### Full System
-- `docker-compose.yaml` - Complete system with all 5 services
+3. Lanza todo el ecosistema LEIA:
+   ```bash
+   # Usando imágenes publicadas o construyendo localmente
+   docker compose up -d
 
-### Designer Services Only (Public)
-- `docker-compose-public.yaml` - Designer Backend, Runner, and Designer Frontend
-  - Services: Designer Backend, Runner, Designer Frontend
-  - Databases: MongoDB (designer), Redis
-  - Use case: Creating and managing LEIA configurations
+   # O para forzar la construcción desde el código local:
+   docker compose up -d --build
+   ```
 
-### Workbench Services Only (Private)
-- `docker-compose-private.yaml` - Workbench Backend, Runner, and Workbench Frontend
-  - Services: Workbench Backend, Runner, Workbench Frontend
-  - Databases: MongoDB (workbench), Redis
-  - Use case: Running experiments with participants
+4. Detener todos los servicios:
+   ```bash
+   docker compose down
 
-## Service Ports
+   # Para reiniciar desde cero eliminando los volúmenes de datos:
+   docker compose down -v
+   ```
 
-| Service | Container Name | Port | Description |
-|---------|----------------|------|-------------|
-| Designer Backend | `designer-backend` | 3001 | Backend API for LEIAs, personas, behaviors, problems (public) |
-| Workbench Backend | `workbench-backend` | 3002 | Experiment management and replication API (private) |
-| Runner | `runner` | 3003 | AI model execution and LLM interaction API |
-| Designer Frontend | `designer-frontend` | 3004 | Frontend for creating LEIA configurations (public) |
-| Workbench Frontend | `workbench-frontend` | 3005 | Frontend for running experiments (private) |
-| MongoDB Designer | `mongodb-designer` | 27017 | Database for designer (LEIAs, personas, etc.) |
-| MongoDB Workbench | `mongodb-workbench` | 27018 | Database for experiments and sessions |
-| Redis | `redis` | 6379 | Cache and session store |
+---
 
-## Environment Variables
+## URLs de Acceso
 
-Create a `.env` file with the following variables:
+Una vez levantados los contenedores, los servicios están disponibles en:
 
-### Database
-- `MONGO_USERNAME` - MongoDB root username
-- `MONGO_PASSWORD` - MongoDB root password
-- `MONGO_PORT_DESIGNER` - Port for designer database (default: 27017)
-- `MONGO_PORT_WORKBENCH` - Port for workbench database (default: 27018)
-- `REDIS_PORT` - Redis port (default: 6379)
+- **Designer Frontend**: [http://localhost:5173](http://localhost:5173)
+- **Workbench Frontend**: [http://localhost:8080](http://localhost:8080)
+- **Auth Service API**: [http://localhost:3005](http://localhost:3005)
+- **Designer Backend API**: [http://localhost:3000](http://localhost:3000)
+- **Workbench Backend API**: [http://localhost:3001](http://localhost:3001)
+- **Runner API**: [http://localhost:5002](http://localhost:5002)
+- **MinIO S3 API**: [http://localhost:9000](http://localhost:9000)
+- **MinIO Console**: [http://localhost:9001](http://localhost:9001) (User: `minio`, Pass: `minio123`)
 
-### Security & Authentication
-- `JWT_SECRET` - Secret key for JWT token signing
-- `API_KEY` - API key for designer backend authentication
-- `RUNNER_KEY` - Authentication key for runner service
-- `DESIGNER_BACKEND_KEY` - Authentication key for designer backend service
-- `ADMIN_SECRET` - Admin secret for workbench
-- `OPENAI_API_KEY` - OpenAI API key for LLM interactions (required)
+---
 
-### Service Configuration
-- `NODE_ENV` - Node environment (development/production)
-- `DEFAULT_ADMIN_EMAIL` - Default admin user email
-- `DEFAULT_ADMIN_PASSWORD` - Default admin user password
+## Variables de Entorno Principales
 
-### AI/ML Configuration
-- `OPENAI_EVALUATION_MODEL` - OpenAI model for evaluations (default: gpt-4o)
-- `DEFAULT_MODEL` - Default model provider (default: openai)
+Consulta el archivo `.env.example` para la lista completa. Las variables más relevantes son:
 
-### Service URLs (Internal)
-- `DESIGNER_BACKEND_URL` - Designer backend service URL (e.g., http://designer-backend:80)
-- `WORKBENCH_BACKEND_URL` - Workbench backend URL (e.g., http://workbench-backend:80)
-- `RUNNER_URL` - Runner service URL (e.g., http://runner:80)
-
-### Frontend URLs
-- `DESIGNER_FRONTEND_URL` - Designer frontend URL (e.g., http://localhost:3004)
-- `WORKBENCH_FRONTEND_URL` - Workbench frontend URL (e.g., http://localhost:3005)
-
-### Service Ports (External)
-- `PORT_DESIGNER_BACKEND` - External port for designer backend (default: 3001)
-- `PORT_WORKBENCH_BACKEND` - External port for workbench backend (default: 3002)
-- `PORT_RUNNER` - External port for runner (default: 3003)
-- `PORT_DESIGNER_FRONTEND` - External port for designer frontend (default: 3004)
-- `PORT_WORKBENCH_FRONTEND` - External port for workbench frontend (default: 3005)
-
-## Development
-
-For development, you can use local builds by modifying the docker-compose files to use local Dockerfiles instead of pulling from GHCR.
-
-### Future Optimization: Multi-Stage Docker Builds
-
-The current Dockerfiles use single-stage builds for simplicity. For production deployments, consider implementing multi-stage builds to:
-- Reduce final image size (from ~1.5GB to ~200MB for frontend images)
-- Improve security by excluding build tools from production images
-- Speed up deployment times
-
-This optimization is recommended once the current setup is validated and stable.
-
-### Example `.env` file for local development:
-```bash
-# Database
-MONGO_USERNAME=admin
-MONGO_PASSWORD=changeme
-MONGO_PORT_DESIGNER=27017
-MONGO_PORT_WORKBENCH=27018
-REDIS_PORT=6379
-
-# Security
-JWT_SECRET=your-jwt-secret-here
-API_KEY=your-api-key-here
-RUNNER_KEY=your-runner-key-here
-DESIGNER_BACKEND_KEY=your-designer-backend-key-here
-ADMIN_SECRET=your-admin-secret-here
-OPENAI_API_KEY=sk-your-openai-api-key-here
-
-# Service Configuration
-NODE_ENV=development
-DEFAULT_ADMIN_EMAIL=admin@example.com
-DEFAULT_ADMIN_PASSWORD=changeme
-
-# AI/ML Configuration
-OPENAI_EVALUATION_MODEL=gpt-4o
-DEFAULT_MODEL=openai
-
-# Service URLs (Internal - Docker network)
-DESIGNER_BACKEND_URL=http://designer-backend:80
-WORKBENCH_BACKEND_URL=http://workbench-backend:80
-RUNNER_URL=http://runner:80
-
-# Frontend URLs (External)
-DESIGNER_FRONTEND_URL=http://localhost:3004
-WORKBENCH_FRONTEND_URL=http://localhost:3005
-
-# Service Ports (External)
-PORT_DESIGNER_BACKEND=3001
-PORT_WORKBENCH_BACKEND=3002
-PORT_RUNNER=3003
-PORT_DESIGNER_FRONTEND=3004
-PORT_WORKBENCH_FRONTEND=3005
-```
-
-## Security Notes
-
-- Change all default passwords and secrets in production
-- Use strong, unique values for all security keys
-- Consider using Docker secrets for sensitive data in production
-- Ensure proper firewall rules for exposed ports
+- `OPENAI_API_KEY`: Clave de API para interacción con modelos de lenguaje.
+- `JWT_SECRET`: Secreto para firma y validación de tokens JWT.
+- `API_KEY`: Clave API para comunicación segura entre servicios.
+- `RUNNER_KEY`: Clave de autenticación para el servicio Runner.
+- `INTERN_TOKEN`: Token para la comunicación interna entre microservicios y Auth.
+- `ADMIN_SECRET`: Secreto de administrador para operaciones privilegiadas en Workbench.
+- `DEFAULT_ADMIN_EMAIL` / `DEFAULT_ADMIN_PASSWORD`: Credenciales por defecto para el usuario inicial.
