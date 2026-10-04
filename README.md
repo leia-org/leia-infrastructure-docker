@@ -81,3 +81,10 @@ Consulta el archivo `.env.example` para la lista completa. Las variables más re
 - `INTERN_TOKEN`: Token para la comunicación interna entre microservicios y Auth.
 - `ADMIN_SECRET`: Secreto de administrador para operaciones privilegiadas en Workbench.
 - `DEFAULT_ADMIN_EMAIL` / `DEFAULT_ADMIN_PASSWORD`: Credenciales por defecto para el usuario inicial.
+- `DEFAULT_MODEL`: Módulo de proveedor por defecto del Runner (`openai-responses`).
+- `SESSION_TTL_SECONDS`: Segundos que vive una sesión del Runner en Redis desde su última actividad, `0` la deja sin caducidad (por defecto `86400`).
+- `OLLAMA_BASE_URL`, `OLLAMA_MODEL`: Servidor y modelo de Ollama para el proveedor local.
+- `ALMA_BASE_URL`, `ALMA_MODEL`: Base URL de un modelo de ALMA (alma.us.es) y su identificador. La base URL de la API key del usuario tiene prioridad.
+- `ALMA_MAX_TOKENS`, `ALMA_EVALUATION_MAX_TOKENS`, `ALMA_TEMPERATURE`, `ALMA_HISTORY_MAX_MESSAGES`: Límites y parámetros de las peticiones a ALMA.
+
+Las API keys de los proveedores (OpenAI, Gemini, Ollama y ALMA) las introduce cada usuario en la aplicación. Las guarda el servicio `auth` y el Runner las resuelve en cada sesión.
