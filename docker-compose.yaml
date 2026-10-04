@@ -159,6 +159,16 @@ services:
       - VITE_AUTH_SERVICE_BACKEND=${AUTH_SERVICE_URL}
       - INTERN_TOKEN=${INTERN_TOKEN}
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-gemma3:4b}
+      - OLLAMA_EVALUATION_MODEL=${OLLAMA_EVALUATION_MODEL:-gemma3:4b}
+      - OLLAMA_HISTORY_MAX_MESSAGES=${OLLAMA_HISTORY_MAX_MESSAGES:-60}
+      - SESSION_TTL_SECONDS=${SESSION_TTL_SECONDS:-86400}
+      - ALMA_BASE_URL=${ALMA_BASE_URL:-https://alma.us.es/api/models/llama-3.1-8b-instruct/v1}
+      - ALMA_MODEL=${ALMA_MODEL:-meta-llama/Llama-3.1-8B-Instruct}
+      - ALMA_MAX_TOKENS=${ALMA_MAX_TOKENS:-1024}
+      - ALMA_EVALUATION_MAX_TOKENS=${ALMA_EVALUATION_MAX_TOKENS:-2048}
+      - ALMA_TEMPERATURE=${ALMA_TEMPERATURE:-0.7}
+      - ALMA_HISTORY_MAX_MESSAGES=${ALMA_HISTORY_MAX_MESSAGES:-60}
     extra_hosts:
       - 'host.docker.internal:host-gateway'
     depends_on:
