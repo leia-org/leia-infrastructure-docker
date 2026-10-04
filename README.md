@@ -85,11 +85,20 @@ Create a `.env` file with the following variables:
 
 ### AI/ML Configuration
 - `OPENAI_EVALUATION_MODEL` - OpenAI model for evaluations (default: gpt-4o)
-- `DEFAULT_MODEL` - Default model provider (default: openai)
+- `DEFAULT_MODEL` - Default runner provider module (default: openai-responses)
+- `SESSION_TTL_SECONDS` - Seconds a runner session lives in Redis after its last activity, `0` disables expiration (default: 86400)
+- `ALMA_BASE_URL` - Base URL of one ALMA model, overridden by the base URL of the user's API key (default: https://alma.us.es/api/models/llama-3.1-8b-instruct/v1)
+- `ALMA_MODEL` - Model id sent to ALMA (default: meta-llama/Llama-3.1-8B-Instruct)
+- `ALMA_MAX_TOKENS` / `ALMA_EVALUATION_MAX_TOKENS` - Token limits per reply and per evaluation (defaults: 1024 / 2048)
+- `ALMA_TEMPERATURE` - Sampling temperature (default: 0.7)
+- `ALMA_HISTORY_MAX_MESSAGES` - Messages kept in an ALMA conversation history (default: 60)
+
+> Provider API keys (OpenAI, Gemini, Ollama, ALMA) are entered by each user in the
+> app and resolved per session by the runner through the leia-auth service. This
+> stack does not run leia-auth yet, so those providers need it deployed separately.
 
 ### Service URLs (Internal)
 - `DESIGNER_BACKEND_URL` - Designer backend service URL (e.g., http://designer-backend:80)
-- `WORKBENCH_BACKEND_URL` - Workbench backend URL (e.g., http://workbench-backend:80)
 - `RUNNER_URL` - Runner service URL (e.g., http://runner:80)
 
 ### Frontend URLs
@@ -140,11 +149,13 @@ DEFAULT_ADMIN_PASSWORD=changeme
 
 # AI/ML Configuration
 OPENAI_EVALUATION_MODEL=gpt-4o
-DEFAULT_MODEL=openai
+DEFAULT_MODEL=openai-responses
+SESSION_TTL_SECONDS=86400
+ALMA_BASE_URL=https://alma.us.es/api/models/llama-3.1-8b-instruct/v1
+ALMA_MODEL=meta-llama/Llama-3.1-8B-Instruct
 
 # Service URLs (Internal - Docker network)
 DESIGNER_BACKEND_URL=http://designer-backend:80
-WORKBENCH_BACKEND_URL=http://workbench-backend:80
 RUNNER_URL=http://runner:80
 
 # Frontend URLs (External)
