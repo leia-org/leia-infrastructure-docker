@@ -62,17 +62,22 @@ async function seed() {
     if (process.env.PREVIEW_OPERATION && process.env.PREVIEW_OPERATION !== 'seed') throw new Error('Unknown operation.');
     const requested = Object.keys(sources);
     if (!requested.length || requested.some(service => !Object.hasOwn(names,service))) throw new Error('Invalid seed service set.');
+    const completed = record?.schemaVersion === 2 || record?.state === 'ready' ? record.databases || {} : {};
+    for (const [service,name] of Object.entries(record?.databases || {})) {
+      if (names[service] !== name) throw new Error('Stored database ownership does not match.');
+    }
     // A lease covers incremental additions too. Completed databases are never reseeded.
     await records.findOneAndUpdate({_id:environment,
       $or:[{leaseUntil:{$exists:false}},{leaseUntil:{$lt:new Date()}}]},
-      {$set:{lease,leaseUntil:new Date(Date.now()+30*60*1000)}},{upsert:true});
+      {$set:{schemaVersion:2,databases:completed,lease,leaseUntil:new Date(Date.now()+30*60*1000)}},{upsert:true});
     for (const service of requested) {
       const name = names[service], user = credentials[service];
       if (user?.username !== name || !/^[a-f0-9]{64}$/.test(user?.password || '')) throw new Error('Invalid scoped database credentials.');
       const target = admin.db(name);
-      if (record?.databases?.[service]) {
-        if (record.databases[service] !== name) throw new Error('Stored database ownership does not match.');
-        await target.command({updateUser:name,pwd:user.password,roles:[{role:'readWrite',db:name}]});
+      if (completed[service]) {
+        if (completed[service] !== name) throw new Error('Stored database ownership does not match.');
+        const existing = await target.command({usersInfo:name});
+        await target.command({[existing.users.length ? 'updateUser' : 'createUser']:name,pwd:user.password,roles:[{role:'readWrite',db:name}]});
         console.log(`${service}: preserving existing preview data.`);
         continue;
       }

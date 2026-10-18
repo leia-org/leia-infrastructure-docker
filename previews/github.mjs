@@ -1,6 +1,6 @@
 import {repositories,parseManifest,parsePullRequest,updateManifest} from './manifest.mjs';
 
-export function githubClient(token, {fetcher=fetch,botLogin=process.env.PREVIEW_BOT_LOGIN}={}) {
+export function githubClient(token, {fetcher=fetch,botLogin=process.env.PREVIEW_BOT_LOGIN || 'leia-org-bot[bot]'}={}) {
   if (!token) throw new Error('An organization-authorized GitHub App token is required.');
   const members = new Map();
   const request = async (path,method='GET',body) => {

@@ -22,8 +22,9 @@
     "workbench_frontend": "leia-workbench-frontend"
   },
   "githubBot": {
-    "name": "leia-bot",
-    "login": "leia-bot[bot]",
-    "organization": "leia-org"
+    "name": "leia-org-bot",
+    "login": "leia-org-bot[bot]",
+    "organization": "leia-org",
+    "appId": 5369466
   }
 }
