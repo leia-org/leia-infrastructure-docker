@@ -1,0 +1,163 @@
+{
+  "services": {
+    "seed": {
+      "build": {
+        "context": ".",
+        "dockerfile": "previews/Dockerfile.seed"
+      },
+      "environment": {
+        "PREVIEW_ENVIRONMENT": "${PREVIEW_ENVIRONMENT}",
+        "PREVIEW_MONGO_ADMIN_URI": "${PREVIEW_MONGO_ADMIN_URI}",
+        "SEED_SOURCES_JSON": "${SEED_SOURCES_JSON}",
+        "PREVIEW_DATABASE_CREDENTIALS_JSON": "${PREVIEW_DATABASE_CREDENTIALS_JSON}"
+      },
+      "restart": "no",
+      "mem_limit": "256m",
+      "cpus": 0.5,
+      "networks": [
+        "preview",
+        "coolify"
+      ]
+    },
+    "redis": {
+      "image": "redis:7-alpine",
+      "command": [
+        "redis-server",
+        "--save",
+        "",
+        "--appendonly",
+        "no",
+        "--maxmemory",
+        "64mb",
+        "--maxmemory-policy",
+        "allkeys-lru"
+      ],
+      "mem_limit": "96m",
+      "cpus": 0.25,
+      "restart": "unless-stopped",
+      "networks": [
+        "preview"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "redis-cli",
+          "ping"
+        ],
+        "interval": "5s",
+        "timeout": "3s",
+        "retries": 10
+      }
+    },
+    "workbench": {
+      "build": {
+        "context": "https://github.com/leia-org/leia-workbench-backend.git#${WORKBENCH_COMMIT}",
+        "dockerfile_inline": "FROM node:22-bookworm-slim\nWORKDIR /app\nCOPY . .\nRUN npm ci --omit=dev && npm cache clean --force\nEXPOSE 3000\nCMD [\"node\", \"-e\", \"Object.assign(process.env, JSON.parse(process.env.APP_CONFIG_JSON)); delete process.env.APP_CONFIG_JSON; import('./src/index.js')\"]\n"
+      },
+      "environment": {
+        "APP_CONFIG_JSON": "${WORKBENCH_CONFIG_JSON}"
+      },
+      "restart": "unless-stopped",
+      "mem_limit": "384m",
+      "cpus": 0.5,
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/', {method:'OPTIONS'}).then(r=>process.exit(r.status===204?0:1)).catch(()=>process.exit(1))"
+        ],
+        "interval": "5s",
+        "timeout": "3s",
+        "start_period": "20s",
+        "retries": 20
+      },
+      "labels": [
+        "traefik.enable=true",
+        "traefik.docker.network=coolify",
+        "traefik.http.services.leia-${PREVIEW_ENVIRONMENT}-workbench.loadbalancer.server.port=3000",
+        "traefik.http.routers.leia-${PREVIEW_ENVIRONMENT}-workbench-http.rule=Host(`${WORKBENCH_HOST}`)",
+        "traefik.http.routers.leia-${PREVIEW_ENVIRONMENT}-workbench-http.entrypoints=http",
+        "traefik.http.middlewares.leia-${PREVIEW_ENVIRONMENT}-workbench-redirect.redirectscheme.scheme=${PREVIEW_HTTP_SCHEME}",
+        "traefik.http.routers.leia-${PREVIEW_ENVIRONMENT}-workbench-http.middlewares=leia-${PREVIEW_ENVIRONMENT}-workbench-redirect",
+        "traefik.http.routers.leia-${PREVIEW_ENVIRONMENT}-workbench-http.service=leia-${PREVIEW_ENVIRONMENT}-workbench",
+        "traefik.http.routers.leia-${PREVIEW_ENVIRONMENT}-workbench-https.rule=Host(`${WORKBENCH_HOST}`)",
+        "traefik.http.routers.leia-${PREVIEW_ENVIRONMENT}-workbench-https.entrypoints=https",
+        "traefik.http.routers.leia-${PREVIEW_ENVIRONMENT}-workbench-https.service=leia-${PREVIEW_ENVIRONMENT}-workbench",
+        "traefik.http.routers.leia-${PREVIEW_ENVIRONMENT}-workbench-https.tls=true",
+        "traefik.http.routers.leia-${PREVIEW_ENVIRONMENT}-workbench-https.tls.certresolver=${PREVIEW_CERT_RESOLVER}"
+      ],
+      "networks": {
+        "preview": {
+          "aliases": [
+            "workbench-${PREVIEW_ENVIRONMENT}"
+          ]
+        },
+        "coolify": {}
+      },
+      "depends_on": {
+        "seed": {
+          "condition": "service_completed_successfully"
+        }
+      }
+    },
+    "runner": {
+      "build": {
+        "context": "https://github.com/leia-org/leia-runner.git#${RUNNER_COMMIT}",
+        "dockerfile_inline": "FROM node:22-bookworm-slim\nWORKDIR /app\nCOPY . .\nRUN npm ci --omit=dev && npm cache clean --force\nEXPOSE 3000\nCMD [\"node\", \"-e\", \"Object.assign(process.env, JSON.parse(process.env.APP_CONFIG_JSON)); delete process.env.APP_CONFIG_JSON; import('./server.js')\"]\n"
+      },
+      "environment": {
+        "APP_CONFIG_JSON": "${RUNNER_CONFIG_JSON}"
+      },
+      "restart": "unless-stopped",
+      "mem_limit": "384m",
+      "cpus": 0.5,
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/', {method:'OPTIONS'}).then(r=>process.exit(r.status===204?0:1)).catch(()=>process.exit(1))"
+        ],
+        "interval": "5s",
+        "timeout": "3s",
+        "start_period": "20s",
+        "retries": 20
+      },
+      "labels": [
+        "traefik.enable=true",
+        "traefik.docker.network=coolify",
+        "traefik.http.services.leia-${PREVIEW_ENVIRONMENT}-runner.loadbalancer.server.port=3000",
+        "traefik.http.routers.leia-${PREVIEW_ENVIRONMENT}-runner-http.rule=Host(`${RUNNER_HOST}`)",
+        "traefik.http.routers.leia-${PREVIEW_ENVIRONMENT}-runner-http.entrypoints=http",
+        "traefik.http.middlewares.leia-${PREVIEW_ENVIRONMENT}-runner-redirect.redirectscheme.scheme=${PREVIEW_HTTP_SCHEME}",
+        "traefik.http.routers.leia-${PREVIEW_ENVIRONMENT}-runner-http.middlewares=leia-${PREVIEW_ENVIRONMENT}-runner-redirect",
+        "traefik.http.routers.leia-${PREVIEW_ENVIRONMENT}-runner-http.service=leia-${PREVIEW_ENVIRONMENT}-runner",
+        "traefik.http.routers.leia-${PREVIEW_ENVIRONMENT}-runner-https.rule=Host(`${RUNNER_HOST}`)",
+        "traefik.http.routers.leia-${PREVIEW_ENVIRONMENT}-runner-https.entrypoints=https",
+        "traefik.http.routers.leia-${PREVIEW_ENVIRONMENT}-runner-https.service=leia-${PREVIEW_ENVIRONMENT}-runner",
+        "traefik.http.routers.leia-${PREVIEW_ENVIRONMENT}-runner-https.tls=true",
+        "traefik.http.routers.leia-${PREVIEW_ENVIRONMENT}-runner-https.tls.certresolver=${PREVIEW_CERT_RESOLVER}"
+      ],
+      "networks": {
+        "preview": {
+          "aliases": [
+            "runner-${PREVIEW_ENVIRONMENT}"
+          ]
+        },
+        "coolify": {}
+      },
+      "depends_on": {
+        "redis": {
+          "condition": "service_healthy"
+        }
+      }
+    }
+  },
+  "networks": {
+    "preview": {},
+    "coolify": {
+      "external": true
+    }
+  }
+}
