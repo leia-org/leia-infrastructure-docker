@@ -1,7 +1,7 @@
 services:
   seed:
     build:
-      context: ..
+      context: .
       dockerfile: previews/Dockerfile.seed
     environment:
       PREVIEW_ENVIRONMENT: ${PREVIEW_ENVIRONMENT}

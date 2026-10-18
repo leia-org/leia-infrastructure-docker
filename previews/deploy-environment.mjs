@@ -95,7 +95,8 @@ export async function deployEnvironment(plan, {infrastructureCommit, infrastruct
   const values = createEnvironmentVariables(plan, source, database.internal_db_url, previous);
   const domains = Object.entries(services).map(([service, name]) => ({name, domain: `${plan.urls[service]}:3000`}));
   await coolify(`applications/${app.uuid}/envs/bulk`, 'PATCH', {data: Object.entries(values).map(([key, value]) => ({
-    key, value, is_literal: true, is_preview: false, is_runtime: true, is_buildtime: key.endsWith('_COMMIT'),
+    key, value, is_literal: true, is_preview: false, is_runtime: true,
+    is_buildtime: key.endsWith('_COMMIT') || key === 'PREVIEW_ENVIRONMENT',
   }))});
   await coolify(`applications/${app.uuid}`, 'PATCH', {git_commit_sha: infrastructureCommit,
     docker_compose_domains: domains, description: `${marker}${plan.environment}:${plan.revision}`});
