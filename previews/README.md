@@ -39,8 +39,11 @@ PR template: that would link unrelated contributions accidentally.
 Each group supports at most one open PR per service. A missing/inaccessible or
 unauthorized reference blocks the group; it is not treated as a closed PR. A closed
 PR is removed only after GitHub confirms its closed state. Independent environments
-can be joined later: the oldest existing group ID is reused, and the obsolete
-group is removed only after all its still-open PRs have a ready replacement.
+can be joined later: an existing backend group takes precedence over a frontend-only
+group; otherwise the oldest existing group ID is reused. The obsolete group is
+removed only after all its still-open PRs have a ready replacement. If both groups
+already have copied databases, their test records are not merged: the retained
+group keeps its data and missing service databases are copied from pre.
 
 ## Deploy only selected services
 
@@ -158,8 +161,12 @@ Actions configuration in `leia-infrastructure-docker`:
 
 Before activation, disable native Cloudflare PR branch builds so they cannot bypass
 membership checks or overwrite the coordinator's baked API URLs; retain `main`
-production and `develop` stable pre builds. Establish wildcard backend TLS before
-enabling groups at scale. Credentials are not included in this repository. PR
+production and `develop` stable pre builds. Backend TLS uses a separate pinned
+Lego container that renews `*.leia.ovh` through DNS validation. It writes certificates
+and an atomic dynamic TLS file into the existing Traefik mounts; the proxy loads
+changes without restarting or changing its static configuration. The DNS token
+exists only in the renewal container, not in PR applications. Credentials are not
+included in this repository. PR
 sites remain public; Cloudflare Access is deferred.
 
 ## Validation

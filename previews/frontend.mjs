@@ -8,7 +8,7 @@ import {repositories} from './manifest.mjs';
 export const previewTag=plan=>`leia-${createHash('sha256').update(plan.environment).digest('hex').slice(0,8)}-${plan.revision}`;
 export function buildVariables(plan,service) {
   if(!service.endsWith('_frontend') || !plan.services[service] || plan.services[service].repository!==repositories[service]) throw new Error('Unexpected frontend build source.');
-  return {...plan.frontendBuildVariables[service],VITE_IMAGE_PUBLIC_URL:'https://images.leia.ovh',
+  return {...plan.frontendBuildVariables[service],VITE_IMAGE_PUBLIC_URL:'https://pre.images.leia.ovh',
     VITE_CLOUDFLARE_SITE_KEY:config.siteKey,VITE_TURNSTILE_ENABLED:'true'};
 }
 export async function validateAssets(directory) {
