@@ -2,6 +2,9 @@
 
 This repository contains Docker Compose configurations for the complete LEIA system infrastructure.
 
+For linking frontend and backend PRs with isolated preview data, see
+[linked preview environments](previews/README.md).
+
 ## Overview
 
 The LEIA system consists of 5 main components:
