@@ -81,8 +81,11 @@ export async function resolveEnvironment(manifest, getPullRequest, getDevelopCom
       throw new Error(`${reference.url}: fork or external contributions require a separate reviewed deployment.`);
     }
     const related = parseManifest(pr.body);
-    if (!related || related.environment !== manifest.environment || JSON.stringify(related.pullRequests.map(item => item.url)) !== signature) {
+    if (!manifest.implicit && (!related || related.environment !== manifest.environment || JSON.stringify(related.pullRequests.map(item => item.url)) !== signature)) {
       throw new Error(`${reference.url}: copy the same environment block into every linked pull request.`);
+    }
+    if (manifest.implicit && (manifest.pullRequests.length !== 1 || reference.service.endsWith('_frontend') || related)) {
+      throw new Error('Implicit environments are supported only for a single unlinked backend PR.');
     }
     if (!/^[a-f0-9]{40}$/.test(pr.head?.sha || '')) throw new Error('Invalid Git commit.');
     selected[reference.service] = { repository: reference.repository, commit: pr.head.sha, pullRequest: reference.number };

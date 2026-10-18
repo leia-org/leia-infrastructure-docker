@@ -38,6 +38,9 @@ test('preserves credentials and test databases across source updates', () => {
   const before = createEnvironmentVariables(plan, source, 'mongodb://root:private@preview.example:27017/admin');
   const after = createEnvironmentVariables(plan, source, 'mongodb://root:private@preview.example:27017/admin', before);
   assert.deepEqual(after, before);
+  const rotated = {...source, auth: {...source.auth, API_KEY_STORAGE_SECRET: 'new-stable-key'}};
+  assert.equal(JSON.parse(createEnvironmentVariables(plan, rotated,
+    'mongodb://root:private@preview.example:27017/admin', before).AUTH_CONFIG_JSON).API_KEY_STORAGE_SECRET, 'encryption-key');
 });
 
 test('database names cannot select a stable database or path', () => {

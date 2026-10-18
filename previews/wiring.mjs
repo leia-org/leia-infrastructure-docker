@@ -23,6 +23,7 @@ export function createEnvironmentVariables(plan, source, mongoAdminUri, previous
   const mongoHost = new URL(mongoAdminUri).host;
   const mongo = service => `mongodb://${credentials[service].username}:${credentials[service].password}@${mongoHost}/${names[service]}?authSource=${names[service]}`;
   const auth = {...source.auth, ...common, MONGO_URI: mongo('auth'), API_KEY: apiKey,
+    API_KEY_STORAGE_SECRET: oldAuth.API_KEY_STORAGE_SECRET ?? source.auth.API_KEY_STORAGE_SECRET,
     DESIGNER_FRONTEND_URL: plan.urls.designer_frontend, WORKBENCH_FRONTEND_URL: plan.urls.workbench_frontend,
     AUTH_ALLOWED_ORIGINS: [...new Set([plan.urls.designer_frontend, plan.urls.workbench_frontend,
       'https://pre.designer.leia.ovh', 'https://pre.workbench.leia.ovh'])].join(','),

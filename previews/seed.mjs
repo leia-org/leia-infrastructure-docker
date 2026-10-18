@@ -61,6 +61,9 @@ async function seed() {
     if (record?.state === 'ready') {
       for (const [service, name] of Object.entries(names)) {
         if (record.databases?.[service] !== name) throw new Error('Stored database ownership does not match.');
+        const user = credentials[service];
+        if (user?.username !== name || !/^[a-f0-9]{64}$/.test(user?.password || '')) throw new Error('Invalid scoped database credentials.');
+        await admin.db(name).command({updateUser: name, pwd: user.password, roles: [{role: 'readWrite', db: name}]});
       }
       console.log('Preview databases already seeded; preserving test data.');
       return;
@@ -112,6 +115,9 @@ if (process.argv[1]?.endsWith('/seed.mjs')) {
   }).catch(error => {
     // Driver errors can contain connection strings; never print them.
     console.error(`Preview seed failed (${error.codeName || error.name}). Inspect private server diagnostics.`);
+    const frames = String(error.stack || '').split('\n').slice(1)
+      .filter(line => /seed\.mjs:\d+:\d+\)?$/.test(line));
+    if (frames.length) console.error(frames.join('\n'));
     process.exitCode = 1;
   });
 }
