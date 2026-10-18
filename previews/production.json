@@ -1,0 +1,12 @@
+{
+  "applications": {
+    "auth": "sqpp1pw4uqyqmkwwjf4e9olb",
+    "designer_backend": "o0j5wazmtva0otkwee9rt5pd",
+    "workbench_backend": "vcmgu924yjg4n5depebof9vz",
+    "runner": "0jb1pdhjnfo6kajkektzakeb"
+  },
+  "workers": {
+    "designer_frontend": "5c74a48520cd468091e570b71dda54ba",
+    "workbench_frontend": "bbc45b36c1e2404b9c35e0203cfbf78a"
+  }
+}

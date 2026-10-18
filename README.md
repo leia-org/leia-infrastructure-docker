@@ -175,18 +175,62 @@ Open [Promote develop to main](https://github.com/leia-org/leia-infrastructure-d
 in Actions and select **Run workflow** on `main`. Choose `all`, `auth`, `designer`,
 `workbench` or `runner`. Designer and Workbench include both frontend and backend;
 `all` covers the six application repositories. Only active `leia-org` members can
-run the promotion. Select **dry_run** to inspect the plan without creating PRs.
+run the promotion. Start with **dry_run** to inspect variables and release PRs
+without changing anything.
 
-`leia-org-bot` creates a normal `develop` → `main` PR wherever develop has changes,
-reuses an existing release PR and skips repositories with no changes to promote.
-The run summary and one bot comment per PR link the selected releases. Existing
-human titles and descriptions are preserved. Repeated runs do not create duplicate
-PRs or comments. Review and merge through the repositories' existing checks and
-approvals; keep `develop` when merging.
+The action compares stable pre and production provider configuration and checks
+new keys declared in root `.env*.example` files at the exact develop/main commits.
+Build develop in the stable pre environment first, so its Cloudflare build variables
+reflect the configuration you have tested. Keep environment examples current when
+introducing new variables; the action does not execute application code to discover them.
+Known LEIA service URLs are translated to production and reviewed neutral session
+settings can be copied. Existing production values are preserved by default.
+Preview CORS domains, the Turnstile bypass token and the preview CI install switch
+are excluded. Variables are never deleted.
 
-Frontends then use the existing Cloudflare production builds; Auth, Designer API,
-Workbench API and Runner use their existing Coolify production applications on
-Hetzner. Production variables and databases remain in those hosting settings.
-These PRs track later pushes to develop; they do not freeze a version or provide
-an atomic release across repositories. Resolve conflicts and coordinate merge
-order when a change requires multiple services together.
+Store new credentials, connections and other environment-specific production values
+in the repository Actions secret **LEIA_PRODUCTION_ENV_JSON**, keyed by service:
+
+```json
+{
+  "auth": {"NEW_API_TOKEN": "replace-with-production-value"},
+  "designer_backend": {"S3_REGION": "auto"},
+  "designer_frontend": {},
+  "workbench_backend": {},
+  "workbench_frontend": {},
+  "runner": {"AVATAR_KBYTES": "4"}
+}
+```
+
+All values must be strings. Use the six service identifiers shown above; empty
+objects can be omitted. Add real values through GitHub's secret settings, never
+through a PR, workflow input or comment. Frontend keys must start with `VITE_` and
+are public in the compiled browser bundle. Existing production sitekeys, database
+connections and credentials are kept. If you intentionally want to update an
+existing value from the central secret, select **update_existing_env**; this only
+changes keys explicitly included in that secret. No value is copied blindly from
+pre for a new credential, storage setting or sitekey.
+
+The entire selected scope must have all required production values before any
+provider write or release PR creation. Missing keys appear by name in the summary.
+The action checks for concurrent branch/configuration changes, then upserts variables
+into Coolify's production application environments and Cloudflare's **main build
+variables**, not static Worker runtime bindings. It verifies the saved values without
+printing them. It does not restart services, trigger builds or copy databases.
+A provider failure stops PR creation; already saved keys remain and a rerun safely
+reuses them. There is no cross-provider transaction or automatic rollback.
+
+After environment synchronization, `leia-org-bot` creates a normal `develop` → `main`
+PR wherever develop has changes, reuses an existing release PR and skips repositories
+with no commits to promote. The summary and one bot comment per release PR link the
+selected releases and list variable names, never values. Human titles and descriptions
+are preserved. Repeated runs do not create duplicate PRs or comments.
+
+Review and merge through the repositories' existing checks and approvals; keep
+`develop` when merging. Frontends use the existing Cloudflare production builds;
+Auth, Designer API, Workbench API and Runner use their existing Coolify production
+applications on Hetzner. New settings take effect at the next deployment; coordinate
+Auth/token issuer and consumer changes so services remain compatible during rollout.
+These PRs track later pushes to develop and do not freeze a version or provide an
+atomic release across repositories. Rerun the action before merging if code or
+configuration changed after planning.

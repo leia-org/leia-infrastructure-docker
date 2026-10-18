@@ -2,6 +2,7 @@ import {appendFile} from 'node:fs/promises';
 import {pathToFileURL} from 'node:url';
 import {repositories} from './manifest.mjs';
 import {githubClient} from './github.mjs';
+import {productionOverrides,productionEnvironmentPlanner,environmentSummary} from './production-environment.mjs';
 
 const components={auth:['auth'],designer:['designer_backend','designer_frontend'],
   workbench:['workbench_backend','workbench_frontend'],runner:['runner']};
@@ -17,8 +18,9 @@ export function releaseSummary(plans) {
   const lines=['### Develop → main','', '| Repository | Changes | Release PR |','|---|---|---|'];
   for(const plan of plans) lines.push(`| ${plan.repository} | ${plan.ahead} ahead, ${plan.behind} behind | ${plan.url?`[Open](${plan.url})`:plan.ahead?'Planned':'Up to date'} |`);
   lines.push('', 'Review and merge each release PR through the normal GitHub checks and approvals. Keep the develop branch.',
-    'Merging to main uses the existing production deployments: Cloudflare for frontends and Coolify on Hetzner for APIs. Production environment variables and databases stay in their hosting configuration.',
+    'Merging to main uses the existing production deployments: Cloudflare for frontends and Coolify on Hetzner for APIs. Production variables are planned and synchronized in their hosting configuration before release PR creation; databases stay in place.',
     'Each PR tracks develop, including later pushes; this is not a frozen or atomic multi-repository release.');
+  if(plans.environments) lines.push('',environmentSummary(plans.environments,{applied:plans.environmentsApplied}));
   return lines.join('\n');
 }
 function releaseBody(plan) {
@@ -48,7 +50,7 @@ async function comment(github,plan,body) {
   if(owned[0]) await github.request(`${prefix}/comments/${owned[0].id}`,'PATCH',{body:text});
   else await github.request(`${prefix}/${plan.number}/comments`,'POST',{body:text});
 }
-export async function promote({github,actor,component='all',apply=false}) {
+export async function promote({github,actor,component='all',apply=false,planEnvironments}) {
   const selected=selectedRepositories(component);
   if(!await github.isMember(actor)) throw new Error('Only active leia-org members may plan or create production release PRs.');
   const plans=[];
@@ -63,7 +65,18 @@ export async function promote({github,actor,component='all',apply=false}) {
     plans.push({repository,mainCommit:main.sha,developCommit:develop.sha,ahead:comparison.ahead_by,behind:comparison.behind_by,
       ...(existing?{url:existing.html_url,number:existing.number}:{}),created:false});
   }
+  const environments=planEnvironments?await planEnvironments(plans):null;
+  if(environments) plans.environments=environments.summaries;
   if(!apply) return plans;
+  // Check every branch before changing production configuration, including existing release PRs.
+  for(const plan of plans) {
+    const main=await github.request(`repos/${plan.repository}/commits/main`),develop=await github.request(`repos/${plan.repository}/commits/develop`);
+    if(main.sha!==plan.mainCommit || develop.sha!==plan.developCommit) throw new Error('Branches changed during release planning. Rerun the action.');
+  }
+  if(environments) {
+    if(environments.summaries.some(row=>row.missing.length)) throw new Error(environmentSummary(environments.summaries)+'\nMissing production values: update LEIA_PRODUCTION_ENV_JSON. No environments or release PRs were changed.');
+    await environments.apply();plans.environmentsApplied=true;
+  }
   for(const plan of plans.filter(plan=>plan.ahead)) {
     // Reuse a human or bot PR without changing its title, description or branch.
     let existing=await openRelease(github,plan.repository);
@@ -89,9 +102,17 @@ export async function promote({github,actor,component='all',apply=false}) {
 }
 if(process.argv[1] && import.meta.url===pathToFileURL(process.argv[1]).href) {
   try {
-    const plans=await promote({github:githubClient(process.env.PREVIEW_GITHUB_TOKEN),actor:process.env.GITHUB_TRIGGERING_ACTOR||process.env.GITHUB_ACTOR,
+    const github=githubClient(process.env.PREVIEW_GITHUB_TOKEN);
+    const planEnvironments=productionEnvironmentPlanner({github,overrides:productionOverrides(process.env.LEIA_PRODUCTION_ENV_JSON),
+      updateExisting:process.env.UPDATE_EXISTING_ENV==='true'});
+    const plans=await promote({github,planEnvironments,actor:process.env.GITHUB_TRIGGERING_ACTOR||process.env.GITHUB_ACTOR,
       component:process.env.PROMOTION_COMPONENT||'all',apply:process.argv.includes('--apply')});
     const summary=releaseSummary(plans);console.log(summary);
     if(process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY,summary+'\n');
-  } catch(error) {console.error(error.message);process.exitCode=1;}
+    if(plans.environments?.some(row=>row.missing.length)) process.exitCode=1;
+  } catch(error) {
+    console.error(error.message);
+    if(process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY,error.message+'\n');
+    process.exitCode=1;
+  }
 }
