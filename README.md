@@ -168,3 +168,25 @@ PORT_WORKBENCH_FRONTEND=3005
 - Use strong, unique values for all security keys
 - Consider using Docker secrets for sensitive data in production
 - Ensure proper firewall rules for exposed ports
+
+## Promote develop to production
+
+Open [Promote develop to main](https://github.com/leia-org/leia-infrastructure-docker/actions/workflows/promote-production.yml)
+in Actions and select **Run workflow** on `main`. Choose `all`, `auth`, `designer`,
+`workbench` or `runner`. Designer and Workbench include both frontend and backend;
+`all` covers the six application repositories. Only active `leia-org` members can
+run the promotion. Select **dry_run** to inspect the plan without creating PRs.
+
+`leia-org-bot` creates a normal `develop` → `main` PR wherever develop has changes,
+reuses an existing release PR and skips repositories with no changes to promote.
+The run summary and one bot comment per PR link the selected releases. Existing
+human titles and descriptions are preserved. Repeated runs do not create duplicate
+PRs or comments. Review and merge through the repositories' existing checks and
+approvals; keep `develop` when merging.
+
+Frontends then use the existing Cloudflare production builds; Auth, Designer API,
+Workbench API and Runner use their existing Coolify production applications on
+Hetzner. Production variables and databases remain in those hosting settings.
+These PRs track later pushes to develop; they do not freeze a version or provide
+an atomic release across repositories. Resolve conflicts and coordinate merge
+order when a change requires multiple services together.
