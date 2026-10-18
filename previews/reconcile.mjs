@@ -11,7 +11,7 @@ export function statusComment(plan) {
     '| Service | Source | URL |','|---|---|---|'];
   for (const [service,url] of Object.entries(plan.urls)) {
     const source=plan.services[service];
-    lines.push(`| ${service.replaceAll('_',' ')} | ${source ? `${source.pullRequest ? `PR #${source.pullRequest}` : 'develop'} · \`${source.commit.slice(0,7)}\`` : 'Shared pre'} | [Open](${url}) |`);
+    lines.push(`| ${service.replaceAll('_',' ')} | ${source ? `${source.pullRequest ? `[PR #${source.pullRequest}](https://github.com/${source.repository}/pull/${source.pullRequest})` : 'develop'} · \`${source.commit.slice(0,7)}\`` : 'Shared pre'} | [Open](${url}) |`);
   }
   const databases=Object.keys(plan.services).filter(service => ['auth','designer_backend','workbench_backend'].includes(service));
   lines.push('', `Database copies: ${databases.length ? databases.join(', ') : 'none'}. Existing test data is preserved on updates.`);

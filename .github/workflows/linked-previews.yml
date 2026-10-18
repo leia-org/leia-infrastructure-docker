@@ -95,7 +95,9 @@ jobs:
           retention-days: 1
   publish:
     needs: [prepare, build]
-    if: always() && needs.prepare.result == 'success' && needs.prepare.outputs.has_frontends == 'true' && needs.build.result == 'success'
+    # Publish each available artifact even if a different PR's build failed.
+    # A missing artifact fails only its own publication job.
+    if: always() && needs.prepare.result == 'success' && needs.prepare.outputs.has_frontends == 'true'
     runs-on: ubuntu-24.04
     permissions: {contents: read}
     strategy:

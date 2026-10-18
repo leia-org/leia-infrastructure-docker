@@ -72,6 +72,7 @@ test('bot comments list deployed and shared URLs and database copies',async()=>{
   await reconcile({github,infrastructureCommit:'c'.repeat(40),save:async v=>{state=v;},deploy:async()=>({applicationUuid:'id'}),publish:async()=>{},cleanup:async()=>{}});
   const comment=statusComment(state.environments['wb-54']);assert.match(comment,/Shared pre/);assert.match(comment,/pre.auth.leia.ovh/);
   assert.match(comment,/pr-wb-54-workbench-api.leia.ovh/);assert.match(comment,/Database copies: workbench_backend/);
+  assert.ok(comment.includes('[PR #54](https://github.com/leia-org/leia-workbench-backend/pull/54)'));
 });
 test('backend opened last rebuilds the unchanged frontend only after the backend is ready',async()=>{
   const github=fakeGithub([pr(wf)]);let state={environments:{}},published=[],events=[];

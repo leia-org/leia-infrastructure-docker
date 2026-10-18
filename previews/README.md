@@ -5,7 +5,8 @@ LEIA application repositories. Its reconciliation engine, Coolify backend adapte
 data seeder and GitHub metadata/comment client live here. The standalone planner CLI is read-only. The Actions workflow separates backend
 preparation, unprivileged frontend builds, trusted Cloudflare publication and status
 finalization. Scheduled deployment is disabled until the explicit activation flag
-is set. The existing frontend preview integration remains in use until that cutover.
+is set. Native frontend builds retain stable pre; PR publication belongs to the
+coordinator after cutover.
 
 ## Start alone and link later
 
@@ -159,9 +160,21 @@ Actions configuration in `leia-infrastructure-docker`:
 - `LEIA_PREVIEWS_ENABLED=true` enables scheduled reconciliation. A manual run
   defaults to read-only planning; the `apply` checkbox explicitly enables writes.
 
-Before activation, disable native Cloudflare PR branch builds so they cannot bypass
-membership checks or overwrite the coordinator's baked API URLs; retain `main`
-production and `develop` stable pre builds. Backend TLS uses a separate pinned
+Before activation, configure the native Cloudflare Previews Base commands to run
+only when `WORKERS_CI_BRANCH=develop`. Set `SKIP_DEPENDENCY_INSTALL=true` in that
+build environment, then use these trusted dashboard commands:
+
+```sh
+# Build command
+if [ "$WORKERS_CI_BRANCH" = develop ]; then npm ci --include=dev && npm run build:pre; else echo "PR previews are managed by leia-org-bot"; fi
+# Preview command
+if [ "$WORKERS_CI_BRANCH" = develop ]; then npm run deploy:preview; else echo "PR previews are managed by leia-org-bot"; fi
+```
+
+Non-develop branches execute neither dependency installation nor repository scripts.
+This prevents native PR builds from bypassing membership checks or overwriting the
+coordinator's baked API URLs, while retaining `main` production and `develop`
+stable pre builds. The production build configuration remains unchanged. Backend TLS uses a separate pinned
 Lego container that renews `*.leia.ovh` through DNS validation. It writes certificates
 and an atomic dynamic TLS file into the existing Traefik mounts; the proxy loads
 changes without restarting or changing its static configuration. The DNS token
