@@ -20,9 +20,9 @@ export async function verify({request,artifact,directory,run=execFileSync,checko
   }
   const variables=service.endsWith('_frontend')?buildVariables({services:{[service]:{repository:request.repository}},frontendBuildVariables:{[service]:{
     VITE_APP_BACKEND:`https://pre.backend.${service.startsWith('designer')?'designer':'workbench'}.leia.ovh`,VITE_AUTH_SERVICE_BACKEND:'https://pre.auth.leia.ovh',VITE_WORKBENCH_URL:'https://pre.workbench.leia.ovh'}}},service):{};
-  const docker=['run','--rm','--cpus=2','--memory=4g','--pids-limit=512','--cap-drop=ALL','--security-opt=no-new-privileges',
+  const docker=['run','--rm','--read-only','--cpus=2','--memory=4g','--pids-limit=512','--cap-drop=ALL','--security-opt=no-new-privileges',
     '--user',`${process.getuid()}:${process.getgid()}`,'--tmpfs','/tmp:rw,nosuid,nodev,size=1g','--mount',`type=bind,src=${resolve(directory)},dst=/work`,
-    '--workdir','/work','--env','HOME=/tmp','--env','CI=true',...Object.entries(variables).flatMap(([key,value])=>['--env',`${key}=${value}`]),image];
+    '--mount',`type=bind,src=${resolve(directory,'.git')},dst=/work/.git,readonly`,'--workdir','/work','--env','HOME=/tmp','--env','CI=true',...Object.entries(variables).flatMap(([key,value])=>['--env',`${key}=${value}`]),image];
   const results=[];
   for(const [cmd,args]of checks) {
     console.log(`Verifying: ${cmd} ${args.join(' ')}`);
