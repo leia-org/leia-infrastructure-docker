@@ -15,13 +15,15 @@ TLS
 }
 trap 'exit 0' TERM INT
 while :; do
-  if lego run --path /certs --cert.name leia-preview --email experimentia@us.es \
+  interval=43200
+  if /lego run --path /certs --cert.name leia-preview --email experimentia@us.es \
     --accept-tos --dns cloudflare --domains leia.ovh --domains '*.leia.ovh'; then
     publish_certificate
   else
     # A temporary renewal failure keeps the existing certificate loaded.
     echo 'Preview certificate acquisition/renewal failed; existing certificates are preserved.' >&2
+    interval=300
   fi
-  sleep 43200 &
+  sleep "$interval" &
   wait "$!" || true
 done
