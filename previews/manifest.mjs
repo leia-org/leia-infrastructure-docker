@@ -100,7 +100,9 @@ export async function resolveEnvironment(manifest, getPullRequest, getDevelopCom
   const urls = environmentUrls(manifest.environment, manifest.pullRequests, Object.keys(services));
   const isolation = manifest.isolation || 'selective';
   const revision = createHash('sha256').update(JSON.stringify({services, urls, isolation})).digest('hex').slice(0, 16);
-  return {environment: manifest.environment, isolation, revision, services, urls,
+  const backendRevision=createHash('sha256').update(JSON.stringify({isolation,urls,
+    services:Object.fromEntries(Object.entries(services).filter(([service])=>backendServices.includes(service)))})).digest('hex').slice(0,16);
+  return {environment: manifest.environment, isolation, revision, backendRevision, services, urls,
     pullRequests: manifest.pullRequests,
     frontendBuildVariables: {
       designer_frontend: {VITE_APP_BACKEND: urls.designer_backend, VITE_AUTH_SERVICE_BACKEND: urls.auth,

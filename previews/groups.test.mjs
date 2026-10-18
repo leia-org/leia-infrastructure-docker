@@ -73,3 +73,31 @@ test('bot comments list deployed and shared URLs and database copies',async()=>{
   const comment=statusComment(state.environments['wb-54']);assert.match(comment,/Shared pre/);assert.match(comment,/pre.auth.leia.ovh/);
   assert.match(comment,/pr-wb-54-workbench-api.leia.ovh/);assert.match(comment,/Database copies: workbench_backend/);
 });
+test('backend opened last rebuilds the unchanged frontend only after the backend is ready',async()=>{
+  const github=fakeGithub([pr(wf)]);let state={environments:{}},published=[],events=[];
+  const options={github,infrastructureCommit:'c'.repeat(40),save:async v=>{state=structuredClone(v);},cleanup:async()=>{},
+    deploy:async(plan,old,allocated)=>{events.push('backend-ready');await allocated('owned-uuid');return {applicationUuid:'owned-uuid'};},
+    publish:async plan=>{events.push('frontend-publish');published.push(plan);}};
+  await reconcile({...options,previous:state});
+  assert.equal(published[0].frontendBuildVariables.workbench_frontend.VITE_APP_BACKEND,'https://pre.backend.workbench.leia.ovh');
+  github.setSnapshot([pr(wf,block('wf-88',[wf])),pr(wb,block('wf-88',[wf]))]);events=[];
+  await reconcile({...options,previous:state});
+  assert.deepEqual(events,['backend-ready','frontend-publish']);
+  assert.equal(published[0].services.workbench_frontend.commit,published[1].services.workbench_frontend.commit);
+  assert.notEqual(published[0].revision,published[1].revision);
+  assert.equal(published[1].frontendBuildVariables.workbench_frontend.VITE_APP_BACKEND,'https://pr-wf-88-workbench-api.leia.ovh');
+});
+test('frontend artifact retries do not redeploy unchanged backends or prematurely report ready',async()=>{
+  const github=fakeGithub([pr(wf,block('shared',[wf,wb])),pr(wb,block('shared',[wf,wb]))]);
+  let state={environments:{}},deploys=0;
+  const options={github,infrastructureCommit:'c'.repeat(40),save:async v=>{state=structuredClone(v);},cleanup:async()=>{},
+    deploy:async()=>{deploys++;return {applicationUuid:'owned-uuid'};},publish:async()=>({pending:true})};
+  await reconcile({...options,previous:state});await reconcile({...options,previous:state});
+  assert.equal(deploys,1);assert.equal(state.environments.shared.status,'building');assert.equal(state.environments.shared.backendReady,true);
+});
+test('linking an existing backend to a frontend placeholder reuses the backend data and application',async()=>{
+  const previous={environments:{'wf-88':{environment:'wf-88',pullRequests:[parsePullRequest(wf)],createdAt:'2026-01-01'},
+    'wb-54':{environment:'wb-54',pullRequests:[parsePullRequest(wb)],createdAt:'2026-02-01',applicationUuid:'existing-backend'}}};
+  const result=await groupPullRequests([pr(wf,block('wf-88',[wb])),pr(wb,block('wf-88',[wf]))],previous,member);
+  assert.equal(result.desired.length,1);assert.equal(result.desired[0].environment,'wb-54');
+});

@@ -80,7 +80,7 @@ export async function deployEnvironment(plan, {infrastructureCommit, infrastruct
   }
   const name = `leia-preview-${plan.environment}`;
   const apps = (await coolify('applications')).filter(app => app.name === name);
-  if (apps.length > 1 || apps.some(app => !app.description?.startsWith(marker))) throw new Error('Preview application ownership conflict.');
+  if (apps.length > 1 || apps.some(app => app.description !== `${marker}${plan.environment}` && !app.description?.startsWith(`${marker}${plan.environment}:`))) throw new Error('Preview application ownership conflict.');
   let app = apps[0];
   const previous = app ? await environmentVariables(app.uuid) : {};
   const source = {};
@@ -93,6 +93,7 @@ export async function deployEnvironment(plan, {infrastructureCommit, infrastruct
       description: `${marker}${plan.environment}`, build_pack: 'dockercompose',
       docker_compose_location: `/previews/stacks/${stackName(active)}`, connect_to_docker_network: false,
     });
+    await onAllocated(result.uuid);
     app = await coolify(`applications/${result.uuid}`);
   }
   await onAllocated(app.uuid);

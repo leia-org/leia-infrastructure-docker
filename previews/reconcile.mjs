@@ -1,7 +1,7 @@
 import {readFile} from 'node:fs/promises';
 import {pathToFileURL} from 'node:url';
 import {groupPullRequests,obsoleteEnvironments} from './groups.mjs';
-import {resolveEnvironment,backendServices} from './manifest.mjs';
+import {resolveEnvironment,backendServices,parsePullRequest} from './manifest.mjs';
 import {githubClient} from './github.mjs';
 import {config} from './api.mjs';
 
@@ -30,10 +30,12 @@ export async function planReconciliation(github,previous={environments:{}}) {
   return {...groups,plans,snapshot,obsolete:obsoleteEnvironments(previous,plans,snapshot,groups.errors)};
 }
 export async function reconcile({github,previous={environments:{}},deploy,cleanup,publish,save,
-  infrastructureCommit,dryRun=false,now=() => new Date().toISOString(),maximumActive=config.maximumActiveEnvironments}) {
+  infrastructureCommit,isPublished=async()=>true,dryRun=false,now=() => new Date().toISOString(),maximumActive=config.maximumActiveEnvironments}) {
   const planned=await planReconciliation(github,previous);
   if (dryRun) return {plans:planned.plans,patches:planned.patches.map(p => p.reference.url),errors:planned.errors,
     obsolete:planned.obsolete.map(p => p.environment)};
+  for (const error of planned.errors) await github.comment(parsePullRequest(error.pullRequest),`### LEIA preview
+Not deployed: ${error.message}`);
   const state=structuredClone(previous);state.environments ||= {};state.version=1;
   const persist=async () => {state.updatedAt=now();await save(state);};
   // Update only the machine-owned block, after membership and complete-group validation.
@@ -57,7 +59,7 @@ export async function reconcile({github,previous={environments:{}},deploy,cleanu
       for (const ref of plan.pullRequests) await github.comment(ref,statusComment(queued));
       continue;
     }
-    const unchanged=old?.status === 'ready' && old.revision === plan.revision && old.infrastructureCommit === infrastructureCommit;
+    const unchanged=old?.status === 'ready' && old.revision === plan.revision && old.infrastructureCommit === infrastructureCommit && await isPublished(plan);
     if (unchanged) {
       // Heal missing comments and merge any newly discovered one-sided links without a redeploy.
       for (const ref of plan.pullRequests) await github.comment(ref,statusComment(old));
@@ -67,13 +69,15 @@ export async function reconcile({github,previous={environments:{}},deploy,cleanu
       ...(old?.applicationUuid ? {applicationUuid:old.applicationUuid}: {})};
     state.environments[plan.environment]=current; await persist();
     try {
-      const deployed=usesServer ? await deploy(plan,old,async applicationUuid => {
+      const backendUnchanged=old?.backendReady && old.backendRevision === plan.backendRevision && old.infrastructureCommit === infrastructureCommit;
+      const deployed=usesServer && !backendUnchanged ? await deploy(plan,old,async applicationUuid => {
         current.applicationUuid=applicationUuid;state.environments[plan.environment]=current;await persist();
       }) : {};
-      current={...current,...deployed,status:'building'};
+      current={...current,...deployed,backendReady:true,status:'building'};
       state.environments[plan.environment]=current;await persist();
       for (const ref of plan.pullRequests) await github.comment(ref,statusComment(current));
-      await publish(plan,old);
+      const publication=await publish(plan,old);
+      if (publication?.pending) continue;
       // Check again before declaring ready: pushes/close/link edits may arrive during a build.
       const fresh=await planReconciliation(github,state);
       if (!fresh.plans.some(candidate => candidate.environment === plan.environment && candidate.revision === plan.revision)) {

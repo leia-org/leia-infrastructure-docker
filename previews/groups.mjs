@@ -44,10 +44,11 @@ export async function groupPullRequests(pullRequests, previous, isMember, closed
       continue;
     }
     const old = Object.values(previous.environments || {}).filter(env => env.pullRequests?.some(pr => groupUrls.has(pr.url)))
-      .sort((a,b) => (a.createdAt || '').localeCompare(b.createdAt || '') || a.environment.localeCompare(b.environment));
+      .sort((a,b) => Number(!a.applicationUuid)-Number(!b.applicationUuid) || (a.createdAt || '').localeCompare(b.createdAt || '') || a.environment.localeCompare(b.environment));
     const names = [...new Set(group.map(item => item.manifest?.environment).filter(Boolean))].sort();
     // Only reuse an old ID if it still belongs to this connected component. This also supports explicit splits.
-    const claimed = old.find(env => names.includes(env.environment));
+    // Keep an already running backend group before a frontend-only placeholder; do not copy its data again.
+    const claimed = old.find(env => env.applicationUuid && refs.some(ref => !ref.service.endsWith('_frontend') && env.pullRequests?.some(pr => pr.url === ref.url))) || old.find(env => names.includes(env.environment));
     const environment = claimed?.environment || names[0] || old[0]?.environment || standaloneName(refs[0]);
     const isolation = group.some(item => item.manifest?.isolation === 'full') ? 'full' : 'selective';
     const manifest = {environment, isolation, pullRequests: refs};

@@ -2,9 +2,10 @@
 
 The coordinator plans a single environment for related pull requests across the six
 LEIA application repositories. Its reconciliation engine, Coolify backend adapter,
-data seeder and GitHub metadata/comment client live here. The CLI is read-only;
-a scheduled production runner and frontend artifact publisher are not activated yet.
-The existing frontend preview integration is still in use until that cutover.
+data seeder and GitHub metadata/comment client live here. The standalone planner CLI is read-only. The Actions workflow separates backend
+preparation, unprivileged frontend builds, trusted Cloudflare publication and status
+finalization. Scheduled deployment is disabled until the explicit activation flag
+is set. The existing frontend preview integration remains in use until that cutover.
 
 ## Start alone and link later
 
@@ -92,9 +93,9 @@ Production and stable pre keep their existing Atlas and Redis connections.
 
 ## Idempotency, status and lifecycle
 
-The trusted runner must hold one global reconciliation lock and persist the public
-state before and after resource allocation. `reconcile.mjs` accepts deployment,
-frontend publishing, cleanup and state-storage adapters. Repeated events with the
+The Actions runner holds one global workflow concurrency lock and persists public
+state on the `preview-state` branch before and after resource allocation.
+`reconcile.mjs` accepts deployment, frontend publishing, cleanup and state-storage adapters. Repeated events with the
 same group revision and infrastructure commit reuse the existing resources. App
 names, DNS ownership markers, generated database names and a MongoDB seeding lease
 provide additional ownership and concurrent-creation checks. Existing test data is
@@ -109,8 +110,8 @@ comments containing the marker are not overwritten.
 Closing one PR removes its service from the group's desired deployment; remaining
 PRs keep their environment ID and use stable pre for omitted dependencies. Closing
 the final PR removes the group's application, Redis, database users/data and owned
-DNS records. The frontend publishing adapter must also remove closed frontend
-Workers previews, without deleting a preview transferred to another active group.
+DNS records. The pipeline also removes closed frontend Workers previews using matching deployment
+ownership annotations, without deleting a preview transferred to another active group.
 Unknown ownership or an incomplete GitHub scan prevents destructive cleanup.
 Failed deployment allocations retain their UUID for retries and capacity accounting.
 
@@ -129,19 +130,37 @@ separately reviewed path.
 
 The coordinator GitHub App needs organization **Members: read**, repository
 **Contents: read** and **Pull requests: write** on the six application repositories.
-The current Coolify GitHub App lacks Members: read, so automatic membership-gated
-provisioning must not be enabled yet. Use a dedicated installation token; never
-copy a personal CLI token into deployment secrets.
+The dedicated `leia-org-bot` App is installed on exactly those six repositories
+with these permissions. Its display logo can be edited in the organization's
+GitHub App settings. Use short-lived installation tokens; never copy a personal
+CLI token into deployment secrets.
 
-Before activation, connect the persistent state store and scheduled runner under
-one global lock. Build frontend PR code in a separate job without deployment
-credentials, validate the resulting static artifacts, then publish from a trusted
-job using a pinned Wrangler version and planner-generated URLs. Native Cloudflare
-PR branch builds must be disabled at that cutover so they cannot bypass membership
-checks or overwrite the coordinator's baked API URLs; retain `main` production and
-`develop` stable pre builds. Establish wildcard backend TLS before enabling groups
-at scale. Cloudflare API credentials and GitHub App permissions are not included
-in this repository. PR sites remain public; Cloudflare Access is deferred.
+The workflow checks GitHub every five minutes after activation. A first frontend
+build can use stable pre; adding a linked backend later deploys it first, then
+rebuilds the unchanged frontend commit with the new URLs and republishes the same
+`pre-<PR>` address. The group revision includes routing, so unchanged frontend code
+does not suppress this rebuild. Frontend-only source updates preserve unchanged
+backend deployments. Build variables explicitly override Vite's pre defaults.
+
+The build job has no deployment or GitHub App credentials. It uploads only static
+assets. A separate trusted job validates the artifact, checks current PR heads and
+membership again, and runs pinned Wrangler 4.151.1 with a generated configuration.
+Only the trusted publication job receives the Workers token. State and metadata
+jobs execute trusted infrastructure code and never PR build scripts.
+
+Actions configuration in `leia-infrastructure-docker`:
+
+- Secrets: `LEIA_BOT_PRIVATE_KEY`, `COOLIFY_TOKEN`, `CLOUDFLARE_DNS_TOKEN`,
+  `CLOUDFLARE_WORKERS_TOKEN`.
+- Variables: `LEIA_BOT_APP_ID`, `LEIA_BOT_INSTALLATION_ID`.
+- `LEIA_PREVIEWS_ENABLED=true` enables scheduled reconciliation. A manual run
+  defaults to read-only planning; the `apply` checkbox explicitly enables writes.
+
+Before activation, disable native Cloudflare PR branch builds so they cannot bypass
+membership checks or overwrite the coordinator's baked API URLs; retain `main`
+production and `develop` stable pre builds. Establish wildcard backend TLS before
+enabling groups at scale. Credentials are not included in this repository. PR
+sites remain public; Cloudflare Access is deferred.
 
 ## Validation
 
@@ -153,4 +172,4 @@ GITHUB_TOKEN=... node previews/reconcile.mjs /path/to/public-state.json
 
 The CLI prints a public plan and intended metadata changes; it performs no writes.
 The deployment and cleanup adapters are explicit entry points for integration tests
-and the future trusted runner. Never expose their deployment credentials to PR code.
+and the trusted pipeline. Never expose their deployment credentials to PR code.

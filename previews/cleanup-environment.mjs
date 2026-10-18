@@ -17,7 +17,7 @@ export async function cleanupEnvironment(plan, {infrastructureCommit, infrastruc
   if (!plan.applicationUuid) return;
   const apps = await coolify('applications');
   const app = apps.find(app => app.uuid === plan.applicationUuid);
-  if (app && (app.name !== `leia-preview-${plan.environment}` || !app.description?.startsWith(`LEIA managed preview:${plan.environment}:`))) {
+  if (app && (app.name !== `leia-preview-${plan.environment}` || (app.description !== `LEIA managed preview:${plan.environment}` && !app.description?.startsWith(`LEIA managed preview:${plan.environment}:`)))) {
     throw new Error('Refusing to remove an application without matching preview ownership.');
   }
   if (app) await removeApplication(app.uuid);
