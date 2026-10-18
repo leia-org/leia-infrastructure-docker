@@ -1,0 +1,24 @@
+{
+  "coolifyUrl": "https://hz.leia.ovh",
+  "projectUuid": "wy8zb1qu83a90lnps8kpwxyv",
+  "serverUuid": "d11rdx2l7jtelkl2s2zd21cd",
+  "destinationUuid": "lqqxdt950redixz5ga8tf3op",
+  "environmentName": "development",
+  "githubAppUuid": "cgej5pzgdqdvcj5aibw2ic5k",
+  "mongoUuid": "tpxvyiqw41houdlzloc6w82x",
+  "stableApplications": {
+    "auth": "umqigqsv3askghvvvzzs7zu0",
+    "designer_backend": "hq3fxfwrwbn70q2dowmknnyw",
+    "workbench_backend": "rrnf7ljpnemsoumyf2tnif3l",
+    "runner": "hi3zaxxvrapq5wg5es430hyu"
+  },
+  "cloudflareAccountId": "1c23ec6d7c1d53acdf8ab3ce4d0dac5d",
+  "cloudflareZoneId": "51d6f8aaf3e25da4dd1408b4a796ee25",
+  "originIp": "178.104.151.214",
+  "maximumActiveEnvironments": 3,
+  "siteKey": "0x4AAAAAAEDBTwHz7YxCtHDa",
+  "workers": {
+    "designer_frontend": "leia-designer-frontend",
+    "workbench_frontend": "leia-workbench-frontend"
+  }
+}
