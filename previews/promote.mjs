@@ -89,7 +89,7 @@ export async function promote({github,actor,component='all',apply=false}) {
 }
 if(process.argv[1] && import.meta.url===pathToFileURL(process.argv[1]).href) {
   try {
-    const plans=await promote({github:githubClient(process.env.PREVIEW_GITHUB_TOKEN),actor:process.env.GITHUB_ACTOR,
+    const plans=await promote({github:githubClient(process.env.PREVIEW_GITHUB_TOKEN),actor:process.env.GITHUB_TRIGGERING_ACTOR||process.env.GITHUB_ACTOR,
       component:process.env.PROMOTION_COMPONENT||'all',apply:process.argv.includes('--apply')});
     const summary=releaseSummary(plans);console.log(summary);
     if(process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY,summary+'\n');
