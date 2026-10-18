@@ -8,7 +8,11 @@ on:
         default: all
         options: [all, auth, designer, workbench, runner]
       dry_run:
-        description: Only show the plan, without creating release PRs
+        description: Only inspect variables and release PRs, without changing anything
+        type: boolean
+        default: false
+      update_existing_env:
+        description: Apply central production overrides to existing keys as well
         type: boolean
         default: false
 concurrency:
@@ -31,7 +35,7 @@ jobs:
           LEIA_BOT_APP_ID: ${{ vars.LEIA_BOT_APP_ID }}
           LEIA_BOT_INSTALLATION_ID: ${{ vars.LEIA_BOT_INSTALLATION_ID }}
           LEIA_BOT_PRIVATE_KEY: ${{ secrets.LEIA_BOT_PRIVATE_KEY }}
-      - name: Create or reuse release PRs
+      - name: Synchronize production variables and prepare release PRs
         run: |
           if [ "$DRY_RUN" = true ]; then
             node previews/promote.mjs
@@ -41,3 +45,7 @@ jobs:
         env:
           PROMOTION_COMPONENT: ${{ inputs.component }}
           DRY_RUN: ${{ inputs.dry_run }}
+          UPDATE_EXISTING_ENV: ${{ inputs.update_existing_env }}
+          LEIA_PRODUCTION_ENV_JSON: ${{ secrets.LEIA_PRODUCTION_ENV_JSON }}
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+          CLOUDFLARE_WORKERS_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_TOKEN }}

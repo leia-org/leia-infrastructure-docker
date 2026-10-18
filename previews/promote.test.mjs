@@ -55,3 +55,20 @@ test('a concurrent human PR is reused after GitHub rejects duplicate creation',a
 test('branch changes during planning require a rerun before creating a PR',async()=>{
   const {github,writes}=fixture({change:true});await assert.rejects(promote({github,actor:'member',component:'auth',apply:true}),/Branches changed/);assert.equal(writes.length,0);
 });
+test('membership is checked before inspecting production environments',async()=>{
+  const f=fixture({member:false});let inspected=false;
+  await assert.rejects(promote({github:f.github,actor:'outside',component:'auth',apply:true,planEnvironments:async()=>{inspected=true;}}));
+  assert.equal(inspected,false);assert.equal(f.writes.length,0);
+});
+test('missing production values block PR creation and all environment writes',async()=>{
+  const f=fixture();let applied=false;
+  await assert.rejects(promote({github:f.github,actor:'member',component:'auth',apply:true,planEnvironments:async()=>({summaries:[{service:'auth',additions:[],updates:[],missing:['NEW_TOKEN']}],apply:async()=>{applied=true;}})}),/NEW_TOKEN/);
+  assert.equal(applied,false);assert.equal(f.writes.length,0);
+});
+test('production variables are synchronized before creating release PRs and dry run cannot apply',async()=>{
+  for(const apply of [false,true]) {
+    const f=fixture();let synced=false;
+    const result=await promote({github:f.github,actor:'member',component:'auth',apply,planEnvironments:async()=>({summaries:[],apply:async()=>{assert.equal(f.writes.length,0);synced=true;}})});
+    assert.equal(synced,apply);assert.equal(result.environmentsApplied,apply?true:undefined);
+  }
+});
