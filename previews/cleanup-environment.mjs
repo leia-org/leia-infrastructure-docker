@@ -1,5 +1,6 @@
 import { config, coolify, cloudflare, waitForDeployment, applicationSettings } from './api.mjs';
 import { databaseNames } from './seed.mjs';
+import {environmentUrls,backendServices} from './manifest.mjs';
 
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function removeApplication(uuid) {
@@ -13,7 +14,7 @@ async function removeApplication(uuid) {
 
 export async function cleanupEnvironment(plan, {infrastructureCommit, infrastructureBranch, localTest = false} = {}) {
   databaseNames(plan.environment);
-  if (!plan.applicationUuid) throw new Error('An owned preview application UUID is required.');
+  if (!plan.applicationUuid) return;
   const apps = await coolify('applications');
   const app = apps.find(app => app.uuid === plan.applicationUuid);
   if (app && (app.name !== `leia-preview-${plan.environment}` || !app.description?.startsWith(`LEIA managed preview:${plan.environment}:`))) {
@@ -42,8 +43,8 @@ export async function cleanupEnvironment(plan, {infrastructureCommit, infrastruc
   const deployment = await coolify('deploy', 'POST', {uuid: created.uuid});
   await waitForDeployment(deployment.deployments[0].deployment_uuid);
   await removeApplication(created.uuid);
-  if (!localTest) for (const service of ['auth', 'designer_backend', 'workbench_backend', 'runner']) {
-    const hostname = new URL(plan.urls[service]).hostname;
+  if (!localTest) for (const service of backendServices) {
+    const hostname = new URL(environmentUrls(plan.environment,[],backendServices)[service]).hostname;
     const prefix = `zones/${config.cloudflareZoneId}/dns_records`;
     const records = await cloudflare(`${prefix}?name=${encodeURIComponent(hostname)}`);
     for (const record of records) {

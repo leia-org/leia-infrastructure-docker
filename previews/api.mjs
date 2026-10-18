@@ -30,7 +30,7 @@ export async function cloudflare(path, method = 'GET', body, kind = 'dns') {
 export async function environmentVariables(uuid) {
   const values = await coolify(`applications/${uuid}/envs`);
   return Object.fromEntries(values.filter(value => !value.is_preview)
-    .map(value => [value.key, String(value.real_value ?? value.value ?? '')]));
+    .map(value => [value.key, String(value.value ?? value.real_value ?? '')]));
 }
 
 export async function waitForDeployment(uuid, timeoutMs = 30 * 60 * 1000) {

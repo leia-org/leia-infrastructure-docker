@@ -1,83 +1,156 @@
 # Linked preview environments
 
-This directory defines the PR linking contract and a read-only deployment planner.
-It does not yet deploy applications, clone databases, rebuild frontend assets or
-handle PR cleanup. Existing Cloudflare frontend previews continue to use stable
-pre backends until the coordinator is connected.
+The coordinator plans a single environment for related pull requests across the six
+LEIA application repositories. Its reconciliation engine, Coolify backend adapter,
+data seeder and GitHub metadata/comment client live here. The CLI is read-only;
+a scheduled production runner and frontend artifact publisher are not activated yet.
+The existing frontend preview integration is still in use until that cutover.
 
-## Link changes across repositories
+## Start alone and link later
 
-Copy the JSON block in [the PR template](pull_request_template.md) into every PR
-being tested together. Use one shared environment name and identical full PR URLs.
-Do not match PR numbers across repositories: Designer frontend PR 108 and Designer
-backend PR 73 are independent identifiers. The example numbers are illustrative;
-the planner never creates links automatically.
+A member can open a PR targeting `develop` without knowing any future PR number.
+The coordinator assigns a stable ID, such as `wf-88`, and adds a managed block to
+the PR body. A standalone frontend uses the stable pre APIs and creates no backend
+application, MongoDB copy or Redis instance.
 
-```sh
-node --test previews/manifest.test.mjs
-node previews/plan.mjs /path/to/pull-request-body.md
+When the second PR exists, put its full URL in `pull_requests` in **either** PR, or
+use the first environment ID in the second PR's block. The coordinator validates
+both authors, resolves the group and updates the managed blocks in all related
+PRs. Human descriptions outside the markers are preserved. Reciprocal manual edits
+are not required. PR numbers and branch names never imply a relationship.
+
+```json
+{
+  "environment": "wf-88",
+  "isolation": "selective",
+  "pull_requests": [
+    "https://github.com/leia-org/leia-workbench-frontend/pull/88",
+    "https://github.com/leia-org/leia-workbench-backend/pull/54"
+  ]
+}
 ```
 
-`GITHUB_TOKEN` is optional for public repository reads but avoids anonymous API
-rate limits. The planner validates reciprocal links, trusted same-repository PRs
-targeting `develop`, open PR state and exact commit SHAs. It produces public URLs
-and Vite build variables only. It does not read deployment credentials.
+Put this JSON inside the markers and fence shown in
+[the copyable manifest template](pull_request_template.md). Example PR numbers
+are illustrative. Do not add a live example block to every repository's default
+PR template: that would link unrelated contributions accidentally.
 
-## Deployment contract
+Each group supports at most one open PR per service. A missing/inaccessible or
+unauthorized reference blocks the group; it is not treated as a closed PR. A closed
+PR is removed only after GitHub confirms its closed state. Independent environments
+can be joined later: the oldest existing group ID is reused, and the obsolete
+group is removed only after all its still-open PRs have a ready replacement.
 
-| Environment | Code | MongoDB | Redis |
+## Deploy only selected services
+
+| Change | New application services | Data copies | Dependencies |
 |---|---|---|---|
-| Production | `main` | Existing Atlas production databases | Existing production Redis |
-| Stable pre | `develop` | Existing Atlas pre databases | Existing pre Redis |
-| Linked PR environment | Linked PR commits; other backend services pinned to `develop` | Separate databases seeded from pre | Separate Redis instance or equivalently isolated store |
+| Workbench frontend | Workbench frontend | None | Stable pre APIs |
+| Workbench frontend + backend | Those two services | Workbench MongoDB | Auth, Designer and Runner from pre |
+| Designer backend | Designer API | Designer MongoDB | Auth, Workbench and Runner from pre |
+| Runner | Runner + private Redis | No MongoDB | Auth from pre |
+| `isolation: full` | Linked frontends and all four backends | Auth, Designer and Workbench MongoDB | All backends isolated together |
 
-Each PR environment must run Auth, Designer API, Workbench API and Runner together,
-including unchanged backend services. This prevents callbacks from writing into
-stable pre through another service. An omitted frontend retains its stable pre
-URL; in particular, Designer can continue to open the stable Workbench frontend.
+Every selected backend runs the exact PR commit. In full mode only, unchanged
+backends are pinned to exact `develop` commits. Frontend URLs remain
+`pre-<PR>.designer.leia.ovh` and `pre-<PR>.workbench.leia.ovh`. Backend URLs use
+`pr-<environment>-<service>.leia.ovh`. An omitted frontend uses stable pre; in
+particular, Designer can open the stable Workbench frontend.
 
-PR backend hosts use `pr-<environment>-<service>.leia.ovh`, keeping them below the
-zone's ordinary wildcard TLS certificate. Frontends retain their existing
-`pre-<PR>.designer.leia.ovh` and `pre-<PR>.workbench.leia.ovh` URLs. DNS records for
-these backend hosts must point to Hetzner separately from the frontend Workers.
+The backend adapter selects one of the checked-in service subsets generated by
+`node previews/compose.mjs`. Raw Compose is required: the ordinary Coolify parser
+adds a shared `.env` file to every container. These stacks explicitly pass only
+each service's runtime configuration; the seed container alone receives the
+MongoDB administrator and source connection strings. There are no public database
+ports or host socket mounts. Routes belong to the generated group names.
 
-The future coordinator must:
+## What separate databases mean
 
-1. Resolve and validate all reciprocal PR blocks and pin their commits.
-2. Create the isolated data stores and backend resources without publishing a
-   ready frontend URL yet.
-3. Copy the three pre MongoDB databases, preserving BSON values, collection options
-   and indexes. Use credentials scoped to the target databases. Never restore over
-   pre or production. Seed once when creating the environment; ordinary commits
-   must preserve test data.
-4. Preserve `API_KEY_STORAGE_SECRET` where needed to decrypt copied API key data,
-   while generating separate internal service credentials and JWT signing keys.
-5. Wire every backend dependency to the same environment, wait for readiness and
-   build the frontend assets with the planner's Vite variables.
-6. Publish frontend assets and report the deployed commits and URLs on each PR.
-7. Reconcile changes to PR metadata and code; reconcile both sides when a link is
-   removed. Keep the environment while another open linked PR still needs it.
-   Delete only the group's resources and data after the last linked PR closes.
+Only selected MongoDB services get a copy of their corresponding pre database.
+Documents retain BSON types and IDs, collection options and indexes. Existing IDs
+therefore remain usable with unchanged pre services. Copies are seeded once;
+source updates preserve test records, scoped database users and existing secrets.
+Adding another backend seeds only its missing database. Copies are not continuously
+synchronized, and reads from live pre during seeding are not an atomic cross-service
+snapshot.
 
-Vite variables are compiled into the frontend assets. Adding runtime Worker vars
-does not change the backend URL of an existing static asset build. Native Coolify
-PR previews alone do not implement cross-repository links or data seeding.
+A user or experiment created in one copied database does not automatically appear
+in pre. Calls handled by shared pre services can still modify pre, send callbacks
+using pre's configured URLs, invoke providers or invalidate shared sessions. For
+example, a shared Designer cannot send a callback to a Workbench PR API merely
+because that Workbench called it. Use full isolation, or include the relevant
+backend PRs, when testing flows that require those writes or callbacks to remain
+inside the preview. The bot comment makes shared dependencies visible.
 
-The Hetzner server currently has 4 CPU and about 7.6 GiB RAM. Set a measured active
-environment limit, build concurrency and cleanup policy before enabling all open
-backend PRs. Do not provision extra paid capacity automatically.
+Selective mode retains the pre signing and service credentials required for
+interoperability. Full mode generates group-specific signing and service credentials.
+Auth preserves the encryption key needed to decrypt copied API key records and
+uses a separate host-scoped session cookie. Designer preview storage writes are
+disabled until a separate preview bucket policy exists; copied public image URLs
+remain readable. Provider calls can still consume the existing pre provider quota.
+Production and stable pre keep their existing Atlas and Redis connections.
 
-Fork PR deployment requires a separately reviewed path. Do not expose deployment
-secrets through a privileged workflow that executes the PR's build scripts. Keep
-backend credentials in Coolify, build frontend code without deployment secrets,
-and publish its artifacts from a separate trusted job. Public pre and PR sites
-remain public; Cloudflare Access is deferred.
+## Idempotency, status and lifecycle
 
-External integrations such as AI providers, object storage and Ollama need an
-explicit preview policy. Database isolation does not isolate shared external
-accounts or image buckets automatically.
+The trusted runner must hold one global reconciliation lock and persist the public
+state before and after resource allocation. `reconcile.mjs` accepts deployment,
+frontend publishing, cleanup and state-storage adapters. Repeated events with the
+same group revision and infrastructure commit reuse the existing resources. App
+names, DNS ownership markers, generated database names and a MongoDB seeding lease
+provide additional ownership and concurrent-creation checks. Existing test data is
+never reseeded just because a commit changed.
 
-## References
+The GitHub client adds or updates one comment owned by the configured bot on each
+PR. Comments list every service URL, exact source commit, shared pre dependencies,
+copied databases and deployment status. Ready is reported only after backend and
+frontend publishing succeed and the PR metadata is checked again. Arbitrary user
+comments containing the marker are not overwritten.
 
-- [Coolify preview deployments](https://coolify.io/docs/applications/deployments/preview-deployments)
-- [Cloudflare Workers GitHub integration](https://developers.cloudflare.com/workers/ci-cd/builds/git-integration/github-integration/)
+Closing one PR removes its service from the group's desired deployment; remaining
+PRs keep their environment ID and use stable pre for omitted dependencies. Closing
+the final PR removes the group's application, Redis, database users/data and owned
+DNS records. The frontend publishing adapter must also remove closed frontend
+Workers previews, without deleting a preview transferred to another active group.
+Unknown ownership or an incomplete GitHub scan prevents destructive cleanup.
+Failed deployment allocations retain their UUID for retries and capacity accounting.
+
+The server currently has 4 CPU and about 7.6 GiB RAM. The configured active backend
+environment limit is three. Frontend-only previews do not consume that limit. No
+paid capacity is created automatically.
+
+## Organization membership and activation
+
+The PR author must be an **active member of `leia-org`**, verified through the
+authenticated GitHub organization membership API. `COLLABORATOR`, public membership,
+branch names and commit author strings are not substitutes. Permission or API
+failures never grant deployment access. PRs must be open, target `develop` in an
+allowlisted repository, and use same-repository source branches; forks need a
+separately reviewed path.
+
+The coordinator GitHub App needs organization **Members: read**, repository
+**Contents: read** and **Pull requests: write** on the six application repositories.
+The current Coolify GitHub App lacks Members: read, so automatic membership-gated
+provisioning must not be enabled yet. Use a dedicated installation token; never
+copy a personal CLI token into deployment secrets.
+
+Before activation, connect the persistent state store and scheduled runner under
+one global lock. Build frontend PR code in a separate job without deployment
+credentials, validate the resulting static artifacts, then publish from a trusted
+job using a pinned Wrangler version and planner-generated URLs. Native Cloudflare
+PR branch builds must be disabled at that cutover so they cannot bypass membership
+checks or overwrite the coordinator's baked API URLs; retain `main` production and
+`develop` stable pre builds. Establish wildcard backend TLS before enabling groups
+at scale. Cloudflare API credentials and GitHub App permissions are not included
+in this repository. PR sites remain public; Cloudflare Access is deferred.
+
+## Validation
+
+```sh
+npm ci --prefix previews
+npm test --prefix previews
+GITHUB_TOKEN=... node previews/reconcile.mjs /path/to/public-state.json
+```
+
+The CLI prints a public plan and intended metadata changes; it performs no writes.
+The deployment and cleanup adapters are explicit entry points for integration tests
+and the future trusted runner. Never expose their deployment credentials to PR code.

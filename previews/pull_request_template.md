@@ -1,26 +1,19 @@
-## Summary
+# Link a preview environment
 
-Describe the change and its validation.
-
-## Linked preview environment
-
-For a change spanning multiple services, replace this example with the real PR URLs
-and copy the identical block into every linked PR. Include this PR itself.
-Each repository has its own PR numbers. Omitted backend services run their
-`develop` commit inside the same isolated environment. An omitted Workbench
-frontend continues to use the public stable pre frontend.
-
-The deployment coordinator must be enabled before this block creates resources.
-Remove this section when no linked environment is needed.
+A PR can start alone. After another related PR exists, add its full URL to
+`pull_requests` in either PR's managed block, or reuse the first environment ID.
+The coordinator validates membership and synchronizes the blocks automatically.
+Use one PR per service. The URLs below are examples; replace them before use.
 
 <!-- leia-preview-environment:start -->
 ```json
 {
-  "environment": "example-change",
-  "pull_requests": [
-    "https://github.com/leia-org/leia-designer-frontend/pull/123",
-    "https://github.com/leia-org/leia-designer-backend/pull/456"
-  ]
+  "environment": "related-change",
+  "isolation": "selective",
+  "pull_requests": []
 }
 ```
 <!-- leia-preview-environment:end -->
+
+Use `"isolation": "full"` when shared pre dependencies cannot support the test flow.
+See the [data isolation and lifecycle contract](README.md).

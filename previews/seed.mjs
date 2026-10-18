@@ -45,10 +45,12 @@ async function seed() {
     const record = await records.findOne({_id: environment});
     if (process.env.PREVIEW_OPERATION === 'cleanup') {
       if (!record) return;
-      for (const [service, name] of Object.entries(names)) {
-        if (record.databases?.[service] !== name) throw new Error('Stored database ownership does not match.');
+      const owned={...record.pendingDatabases,...record.databases};
+      for (const [service, name] of Object.entries(owned)) {
+        if (names[service] !== name) throw new Error('Stored database ownership does not match.');
       }
-      for (const name of Object.values(names)) {
+      if (record.leaseUntil && record.leaseUntil > new Date()) throw new Error('Preview seeding is still active.');
+      for (const name of Object.values(owned)) {
         const target = admin.db(name);
         await target.command({dropUser: name}).catch(error => { if (error.codeName !== 'UserNotFound') throw error; });
         await target.dropDatabase();
@@ -58,45 +60,41 @@ async function seed() {
       return;
     }
     if (process.env.PREVIEW_OPERATION && process.env.PREVIEW_OPERATION !== 'seed') throw new Error('Unknown operation.');
-    if (record?.state === 'ready') {
-      for (const [service, name] of Object.entries(names)) {
-        if (record.databases?.[service] !== name) throw new Error('Stored database ownership does not match.');
-        const user = credentials[service];
-        if (user?.username !== name || !/^[a-f0-9]{64}$/.test(user?.password || '')) throw new Error('Invalid scoped database credentials.');
-        await admin.db(name).command({updateUser: name, pwd: user.password, roles: [{role: 'readWrite', db: name}]});
+    const requested = Object.keys(sources);
+    if (!requested.length || requested.some(service => !Object.hasOwn(names,service))) throw new Error('Invalid seed service set.');
+    // A lease covers incremental additions too. Completed databases are never reseeded.
+    await records.findOneAndUpdate({_id:environment,
+      $or:[{leaseUntil:{$exists:false}},{leaseUntil:{$lt:new Date()}}]},
+      {$set:{lease,leaseUntil:new Date(Date.now()+30*60*1000)}},{upsert:true});
+    for (const service of requested) {
+      const name = names[service], user = credentials[service];
+      if (user?.username !== name || !/^[a-f0-9]{64}$/.test(user?.password || '')) throw new Error('Invalid scoped database credentials.');
+      const target = admin.db(name);
+      if (record?.databases?.[service]) {
+        if (record.databases[service] !== name) throw new Error('Stored database ownership does not match.');
+        await target.command({updateUser:name,pwd:user.password,roles:[{role:'readWrite',db:name}]});
+        console.log(`${service}: preserving existing preview data.`);
+        continue;
       }
-      console.log('Preview databases already seeded; preserving test data.');
-      return;
-    }
-    // The unique _id and lease filter make concurrent creation fail instead of seeding twice.
-    await records.findOneAndUpdate({_id: environment, state: {$ne: 'ready'},
-      $or: [{leaseUntil: {$exists: false}}, {leaseUntil: {$lt: new Date()}}]},
-    {$set: {state: 'seeding', databases: names, lease,
-      leaseUntil: new Date(Date.now() + 30 * 60 * 1000)}}, {upsert: true});
-    for (const [service, name] of Object.entries(names)) {
-      const sourceUri = sources[service];
-      const sourceUrl = new URL(sourceUri);
+      const sourceUri = sources[service], sourceUrl = new URL(sourceUri);
       if (sourceUrl.pathname !== `/${service}-pre` || sourceUrl.hostname === targetUrl.hostname) {
         throw new Error('Only the expected pre database can be copied to a different preview server.');
       }
-      const user = credentials[service];
-      if (user?.username !== name || !/^[a-f0-9]{64}$/.test(user?.password || '')) throw new Error('Invalid scoped database credentials.');
-      const source = new MongoClient(sourceUri, {serverSelectionTimeoutMS: 30000});
-      clients.push(source);
-      await source.connect();
-      const target = admin.db(name);
-      // names are generated internally with the pr_ prefix, never taken from a source URI.
+      const source = new MongoClient(sourceUri,{serverSelectionTimeoutMS:30000});
+      clients.push(source); await source.connect();
+      await records.updateOne({_id:environment,lease},{$set:{[`pendingDatabases.${service}`]:name}});
       await target.dropDatabase();
       const info = await source.db().listCollections().toArray();
-      let count = 0;
-      for (const collection of info) count += await cloneCollection(source.db(), target, collection);
-      const existingUser = await target.command({usersInfo: user.username});
-      await target.command({[existingUser.users.length ? 'updateUser' : 'createUser']: user.username,
-        pwd: user.password, roles: [{role: 'readWrite', db: name}]});
+      let count=0;
+      for (const collection of info) count += await cloneCollection(source.db(),target,collection);
+      const existingUser = await target.command({usersInfo:name});
+      await target.command({[existingUser.users.length ? 'updateUser' : 'createUser']:name,
+        pwd:user.password,roles:[{role:'readWrite',db:name}]});
+      await records.updateOne({_id:environment,lease},{$set:{[`databases.${service}`]:name},$unset:{[`pendingDatabases.${service}`]:''}});
       console.log(`${service}: copied ${info.length} collections and ${count} documents.`);
     }
-    await records.updateOne({_id: environment, lease}, {$set: {state: 'ready', seededAt: new Date()},
-      $unset: {leaseUntil: '', lease: ''}});
+    await records.updateOne({_id:environment,lease},{$set:{state:'ready',seededAt:new Date()},
+      $unset:{leaseUntil:'',lease:''}});
     console.log('Preview data is ready.');
   } catch (error) {
     if (records) await records.updateOne({_id: environment, lease}, {$set: {state: 'failed'},
