@@ -106,7 +106,7 @@ export async function deployEnvironment(plan, {infrastructureCommit, infrastruct
   }))});
   await coolify(`applications/${app.uuid}`, 'PATCH', {git_commit_sha: infrastructureCommit,
     docker_compose_location: `/previews/stacks/${stackName(active)}`,
-    docker_compose_custom_start_command:'docker compose up -d --remove-orphans',
+    docker_compose_custom_start_command:null,
     is_raw_compose_deployment_enabled:true, description: `${marker}${plan.environment}:${plan.revision}`});
   const deployment = await coolify('deploy', 'POST', {uuid: app.uuid});
   const deploymentUuid = deployment.deployments[0].deployment_uuid;

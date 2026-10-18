@@ -20,5 +20,10 @@
   "workers": {
     "designer_frontend": "leia-designer-frontend",
     "workbench_frontend": "leia-workbench-frontend"
+  },
+  "githubBot": {
+    "name": "leia-bot",
+    "login": "leia-bot[bot]",
+    "organization": "leia-org"
   }
 }
