@@ -98,7 +98,8 @@ export async function deployEnvironment(plan, {infrastructureCommit, infrastruct
   }
   await onAllocated(app.uuid);
   const values = createEnvironmentVariables(plan, source, database.internal_db_url, previous);
-  values.PREVIEW_CERT_RESOLVER = localTest ? '' : 'letsencrypt';
+  // Preview TLS uses the renewed wildcard loaded by the proxy's existing file provider.
+  values.PREVIEW_CERT_RESOLVER = '';
   values.PREVIEW_HTTP_SCHEME = localTest ? 'http' : 'https';
   for (const service of active) values[`${services[service].toUpperCase()}_HOST`] = new URL(plan.urls[service]).hostname;
   await coolify(`applications/${app.uuid}/envs/bulk`, 'PATCH', {data: Object.entries(values).map(([key, value]) => ({

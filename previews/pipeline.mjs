@@ -16,10 +16,11 @@ async function garbageCollectFrontends(github,state,snapshot) {
     if(open.has(url)) continue;
     const plan={environment:entry.environment,revision:entry.revision,services:{[entry.service]:entry.source}};
     const latest=await latestFrontend(plan,entry.service);
-    if(latest?.annotations?.['workers/tag']===previewTag(plan) &&
-      latest?.annotations?.['workers/message']===`LEIA linked preview ${entry.environment} ${entry.revision}`) {
+    const candidates=[entry,entry.pending].filter(Boolean);
+    if(candidates.some(candidate=>latest?.annotations?.['workers/tag']===previewTag(candidate) &&
+      latest?.annotations?.['workers/message']===`LEIA linked preview ${candidate.environment} ${candidate.revision}`)) {
       await cloudflare(`accounts/${config.cloudflareAccountId}/workers/workers/${config.workers[entry.service]}/previews/pre-${entry.source.pullRequest}`,'DELETE',undefined,'workers');
-    } else if(latest) throw new Error('Closed frontend preview ownership changed. No deletion was performed.');
+    } // Unknown/native deployments are never deleted by the coordinator.
     delete state.frontendPreviews[url];
   }
 }
@@ -37,6 +38,12 @@ export async function prepare({dryRun=false}={}) {
       plans.push(plan);return {pending:true};
     }});
   const state=result.state;
+  // Record expected ownership before publication so close/build races can clean up a published preview even before finalization.
+  state.frontendPreviews ||= {};
+  for(const plan of plans) for(const ref of plan.pullRequests.filter(ref=>ref.service.endsWith('_frontend'))) {
+    const expected={environment:plan.environment,revision:plan.revision,service:ref.service,source:plan.services[ref.service]};
+    state.frontendPreviews[ref.url]={...(state.frontendPreviews[ref.url] || expected),pending:expected};
+  }
   // Closed frontend resources are independent from backend group lifetimes.
   await garbageCollectFrontends(github,state,await github.snapshot());await store.save(state);
   const matrix=plans.flatMap(plan=>Object.entries(plan.services).filter(([service])=>service.endsWith('_frontend'))
