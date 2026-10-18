@@ -234,3 +234,11 @@ Auth/token issuer and consumer changes so services remain compatible during roll
 These PRs track later pushes to develop and do not freeze a version or provide an
 atomic release across repositories. Rerun the action before merging if code or
 configuration changed after planning.
+
+## Ask the bot to update a PR
+
+Post `/leia <instruction>` in an application PR conversation, for example
+`/leia fix merge conflicts of this branch`. Active organization members can ask
+`leia-org-bot` to implement changes with `gpt-6-luna`, run checks and add a verified
+commit to the PR branch. Commands are centrally polled, normally every five minutes.
+See [agent commands](agent/README.md) for setup, verification and supported scope.

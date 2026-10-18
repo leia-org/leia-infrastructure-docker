@@ -1,0 +1,141 @@
+name: LEIA agent commands
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/5 * * * *'
+concurrency:
+  group: leia-agent-commands
+  cancel-in-progress: false
+permissions: {}
+jobs:
+  prepare:
+    if: github.ref == 'refs/heads/main' && vars.LEIA_AGENT_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions: {contents: write}
+    outputs:
+      matrix: ${{ steps.scan.outputs.matrix }}
+      has_requests: ${{ steps.scan.outputs.has_requests }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: {node-version: '22'}
+      - name: Check API key is configured before claiming commands
+        run: test "$HAS_OPENAI_KEY" = true
+        env:
+          HAS_OPENAI_KEY: ${{ secrets.OPENAI_API_KEY != '' }}
+      - run: node previews/app-token.mjs
+        env:
+          LEIA_BOT_APP_ID: ${{ vars.LEIA_BOT_APP_ID }}
+          LEIA_BOT_INSTALLATION_ID: ${{ vars.LEIA_BOT_INSTALLATION_ID }}
+          LEIA_BOT_PRIVATE_KEY: ${{ secrets.LEIA_BOT_PRIVATE_KEY }}
+      - id: scan
+        run: node agent/scan.mjs
+        env: {GITHUB_TOKEN: '${{ github.token }}'}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with: {name: leia-agent-requests, path: agent-requests.json, retention-days: 3}
+  agent:
+    needs: prepare
+    if: needs.prepare.outputs.has_requests == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions: {contents: read}
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix: {request: '${{ fromJSON(needs.prepare.outputs.matrix) }}'}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {path: trusted, persist-credentials: false}
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: ${{ matrix.request.repository }}
+          ref: ${{ matrix.request.headSha }}
+          path: target
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: {node-version: '22'}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with: {name: leia-agent-requests, path: requests}
+      - name: Prepare the exact PR and optional base merge
+        run: node trusted/agent/generate.mjs prepare "$COMMAND_ID" requests/agent-requests.json target "$RUNNER_TEMP/agent-result"
+        env: {COMMAND_ID: '${{ matrix.request.id }}'}
+      - name: Implement and check the requested change
+        uses: openai/codex-action@a8d8be6ee028bea4525bc722d16f36687b408c81
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          working-directory: target
+          prompt-file: ${{ runner.temp }}/agent-result/prompt.md
+          output-file: ${{ runner.temp }}/agent-result/result.json
+          output-schema-file: trusted/agent/result.schema.json
+          model: gpt-6-luna
+          effort: high
+          codex-version: 0.163.0
+          safety-strategy: drop-sudo
+          sandbox: workspace-write
+          codex-args: '["--ephemeral", "-c", "sandbox_workspace_write.network_access=true"]'
+          allow-users: '*'
+          allow-bots: 'true'
+      - name: Export a bounded patch without publishing credentials
+        run: node trusted/agent/generate.mjs export "$COMMAND_ID" requests/agent-requests.json target "$RUNNER_TEMP/agent-result"
+        env: {COMMAND_ID: '${{ matrix.request.id }}'}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: patch-${{ matrix.request.id }}
+          path: ${{ runner.temp }}/agent-result/patch.json
+          retention-days: 3
+  verify:
+    name: Verify command ${{ matrix.request.id }}
+    needs: [prepare, agent]
+    if: always() && needs.prepare.outputs.has_requests == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions: {contents: read}
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix: {request: '${{ fromJSON(needs.prepare.outputs.matrix) }}'}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: {node-version: '22'}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with: {name: leia-agent-requests, path: requests}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with: {name: 'patch-${{ matrix.request.id }}', path: patch}
+      - name: Repeat mandatory checks in a clean isolated container
+        run: node agent/verify.mjs "$COMMAND_ID" requests/agent-requests.json patch "$RUNNER_TEMP/verify-target" "$RUNNER_TEMP/verified"
+        env: {COMMAND_ID: '${{ matrix.request.id }}'}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: verified-${{ matrix.request.id }}
+          path: ${{ runner.temp }}/verified/
+          retention-days: 3
+  publish:
+    needs: [prepare, agent, verify]
+    if: always() && needs.prepare.outputs.has_requests == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions: {contents: write, actions: read}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: {node-version: '22'}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with: {name: leia-agent-requests, path: requests}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        continue-on-error: true
+        with: {pattern: 'verified-*', path: verified}
+      - run: node previews/app-token.mjs
+        env:
+          LEIA_BOT_APP_ID: ${{ vars.LEIA_BOT_APP_ID }}
+          LEIA_BOT_INSTALLATION_ID: ${{ vars.LEIA_BOT_INSTALLATION_ID }}
+          LEIA_BOT_PRIVATE_KEY: ${{ secrets.LEIA_BOT_PRIVATE_KEY }}
+          LEIA_BOT_CONTENTS_WRITE: 'true'
+      - name: Publish verified commits and report failures
+        run: node agent/publish.mjs requests/agent-requests.json verified
+        env: {GITHUB_TOKEN: '${{ github.token }}'}
