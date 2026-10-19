@@ -29,7 +29,9 @@ export async function publish({github,request,artifact,verified,directory,checko
     const blob=await github.request(`${prefix}/blobs`,'POST',{encoding:'base64',content:content.toString('base64')});
     tree.push({path:file,mode,type:'blob',sha:blob.sha});
   }
-  const created=await github.request(`${prefix}/trees`,'POST',{base_tree:head.tree.sha,tree});
+  // A conflict resolution can keep the existing tree while recording the base
+  // as a second parent. GitHub rejects creation of a tree with no entries.
+  const created=tree.length?await github.request(`${prefix}/trees`,'POST',{base_tree:head.tree.sha,tree}):head.tree;
   const title=request.mergeBase?'fix: resolve PR merge conflicts':'fix: apply LEIA agent request';
   const commit=await github.request(`${prefix}/commits`,'POST',{message:`${title}\n\nRequested by @${request.actor} in PR #${request.number}, comment ${request.commentId}. Independently verified before publication.`,
     tree:created.sha,parents:[request.headSha,...(mergeRequired?[request.baseSha]:[])]});

@@ -136,6 +136,24 @@ test('generation prepares a conflicted package.json using checks from the origin
   assert.match(await readFile(join(output,'prompt.md'),'utf8'),/npm test -- --run/);
   assert.ok((await readFile(join(f.root,'leia-codex-home','config.toml'),'utf8')).includes('leia-agent'));
 });
+test('a merge retaining the PR contents reuses its tree instead of posting an empty tree',async t=>{
+  const f=await fixture(t);
+  git(f.source,['checkout','-b','base']);await writeFile(join(f.source,'file.txt'),'base change\n');
+  git(f.source,['add','.']);git(f.source,['commit','-qm','base change']);const base=git(f.source,['rev-parse','HEAD']).trim();
+  git(f.source,['checkout','-b','feature',f.req.headSha]);
+  const req={...f.req,baseSha:base,mergeBase:true};
+  const github=api({current:{...pr,head:{...pr.head,sha:req.headSha},base:{...pr.base,sha:base}}});
+  const normal=github.request;
+  github.request=async(path,method,...args)=>{
+    if(method==='POST' && path.endsWith('/trees'))throw Error('GitHub rejects empty trees');
+    return normal(path,method,...args);
+  };
+  await publish({github,request:req,artifact:{patch:''},verified:{version:1,requestHash:hash(JSON.stringify(req)),patchHash:hash(''),checks:[{result:'passed'},{result:'passed'}]},directory:join(f.root,'merge-only'),checkout:f.checkout});
+  const commit=github.writes.find(row=>row.path.endsWith('/commits'));
+  assert.equal(commit.body.tree,'e'.repeat(40));assert.deepEqual(commit.body.parents,[req.headSha,base]);
+  assert.equal(github.writes.some(row=>row.path.endsWith('/trees')||row.path.endsWith('/blobs')),false);
+  assert.equal(github.writes.at(-1).body.force,false);
+});
 test('a head change immediately before publication never updates the branch',async t=>{
   const f=await fixture(t),github=api({current:{...pr,head:{...pr.head,sha:f.req.headSha},base:{...pr.base,sha:f.req.baseSha}}});
   github.isMemberFresh=async()=>false;
