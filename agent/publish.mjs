@@ -31,7 +31,7 @@ export async function publish({github,request,artifact,verified,directory,checko
   }
   const created=await github.request(`${prefix}/trees`,'POST',{base_tree:head.tree.sha,tree});
   const title=request.mergeBase?'fix: resolve PR merge conflicts':'fix: apply LEIA agent request';
-  const commit=await github.request(`${prefix}/commits`,'POST',{message:`${title}\n\nRequested by @${request.actor} in PR #${request.number}. Independently verified before publication.\n\nLEIA-Command: ${request.commentId}`,
+  const commit=await github.request(`${prefix}/commits`,'POST',{message:`${title}\n\nRequested by @${request.actor} in PR #${request.number}, comment ${request.commentId}. Independently verified before publication.`,
     tree:created.sha,parents:[request.headSha,...(mergeRequired?[request.baseSha]:[])]});
   if(!/^[a-f0-9]{40}$/.test(commit?.sha||''))throw new Error('GitHub did not create a valid commit.');
   // Fresh membership, command, head and base checks immediately before publishing. No force push.
@@ -53,7 +53,8 @@ export async function finalize({github,store,requests,artifacts,runId}) {
       await store.save(state);
       const checks=verified.checks.map(row=>`- \`${row.command}\`: passed`).join('\n');
       await reply(github,request,`### LEIA agent\n${result.unchanged?'No commit was necessary; the requested result is already present.':`Added [commit ${result.sha.slice(0,7)}](${result.url}) to \`${request.headRef}\`.`}\n\nIndependent verification in a clean container:\n${checks}\n\n[Run details](https://github.com/leia-org/leia-infrastructure-docker/actions/runs/${runId}). The PR remains open for review.`).catch(()=>{console.error('Published result could not be acknowledged in the PR.');});
-    }catch {
+    }catch(error) {
+      console.error(`Command ${request.commentId}: ${error.message}`);
       failures++;Object.assign(entry,{status:'failed',updatedAt:new Date().toISOString()});await store.save(state);
       await reply(github,request,`### LEIA agent\nI could not publish a verified commit. A required check may have failed, the request or branches may have changed, or publication may have been rejected.\n\n[Inspect the run](https://github.com/leia-org/leia-infrastructure-docker/actions/runs/${runId}). No PR was merged and no force push was used. Post a new \`/leia <instruction>\` comment after addressing the failure.`).catch(()=>{console.error('Unable to acknowledge the failed command.');});
     }finally{await rm(directory,{recursive:true,force:true});}
