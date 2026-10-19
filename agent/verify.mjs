@@ -4,7 +4,7 @@ import {execFileSync} from 'node:child_process';
 import {validateRequest,validationCommands,hash} from './core.mjs';
 import {prepareCheckout,checkedPatch,git} from './git.mjs';
 import {repositories} from '../previews/manifest.mjs';
-import {buildVariables} from '../previews/frontend.mjs';
+import {verificationEnvironment} from './environment.mjs';
 const config=JSON.parse(await readFile(new URL('./config.json',import.meta.url)));
 export async function verify({request,artifact,directory,run=execFileSync,checkout=prepareCheckout,image=config.verificationImage}) {
   validateRequest(request);await checkout(request,directory);
@@ -18,8 +18,7 @@ export async function verify({request,artifact,directory,run=execFileSync,checko
     const name=args[0]==='run'?args[1]:'test';
     if(current.scripts?.[name]!==original.scripts?.[name])throw new Error('Mandatory verification scripts cannot be changed by an agent.');
   }
-  const variables=service.endsWith('_frontend')?buildVariables({services:{[service]:{repository:request.repository}},frontendBuildVariables:{[service]:{
-    VITE_APP_BACKEND:`https://pre.backend.${service.startsWith('designer')?'designer':'workbench'}.leia.ovh`,VITE_AUTH_SERVICE_BACKEND:'https://pre.auth.leia.ovh',VITE_WORKBENCH_URL:'https://pre.workbench.leia.ovh'}}},service):{};
+  const variables=verificationEnvironment(service);
   const docker=['run','--rm','--read-only','--cpus=2','--memory=4g','--pids-limit=512','--cap-drop=ALL','--security-opt=no-new-privileges',
     '--user',`${process.getuid()}:${process.getgid()}`,'--tmpfs','/tmp:rw,nosuid,nodev,size=1g','--mount',`type=bind,src=${resolve(directory)},dst=/work`,
     '--mount',`type=bind,src=${resolve(directory,'.git')},dst=/work/.git,readonly`,'--workdir','/work','--env','HOME=/tmp','--env','CI=true',...Object.entries(variables).flatMap(([key,value])=>['--env',`${key}=${value}`]),image];

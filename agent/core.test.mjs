@@ -56,13 +56,15 @@ test('a partial scan claims nothing, and historical comments are ignored',async(
   const result=await scan({github:api(),store:{load:async()=>({version:1,enabledAt:'2026-10-18T13:00:00Z',commands:{}}),save:async()=>{}},runId:2});assert.equal(result.length,0);
 });
 test('protected files, traversal and private environments cannot enter an agent patch',()=>{
-  for(const path of ['.github/workflows/ci.yml','.github/actions/x/action.yml','AGENTS.md','sub/AGENTS.md','.codex/config.toml','.env','.env.pre','private.pem','../escape','/absolute','a/.git/config','x\\file','x\nfile'])assert.equal(allowedPath(path),false,path);
+  for(const path of ['.github/actions','.github/workflows','.github/workflows/ci.yml','.github/actions/x/action.yml','AGENTS.md','sub/AGENTS.md','.codex/config.toml','.env','.env.pre','private.pem','../escape','/absolute','a/.git/config','x\\file','x\nfile'])assert.equal(allowedPath(path),false,path);
   for(const path of ['src/index.js','README.md','.env.example','.env.production.example','tests/example.test.js'])assert.equal(allowedPath(path),true,path);
 });
 test('mandatory validation covers frontend builds, backend tests and Runner unit tests',()=>{
   assert.deepEqual(validationCommands('auth',{test:'vitest'}),[['npm',['test','--','--run']]]);
   assert.deepEqual(validationCommands('runner',{'test:unit':'vitest run'}),[['npm',['run','test:unit']]]);
   assert.equal(validationCommands('designer_frontend',{'test:preview':'node --test'}).length,2);
+  assert.deepEqual(validationCommands('workbench_frontend',{build:'vite build'}),[['npm',['run','build']]]);
+  assert.deepEqual(validationCommands('workbench_frontend',{'build:pre':'vite build --mode pre'}),[['npm',['run','build:pre']]]);
 });
 async function fixture(t) {
   const root=await mkdtemp(join(tmpdir(),'leia-agent-test-'));t.after(()=>rm(root,{recursive:true,force:true}));
