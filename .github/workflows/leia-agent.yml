@@ -1,5 +1,7 @@
 name: LEIA agent commands
 on:
+  repository_dispatch:
+    types: [leia-agent-command]
   workflow_dispatch:
   schedule:
     - cron: '*/5 * * * *'

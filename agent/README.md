@@ -11,10 +11,12 @@ posting a normal PR conversation comment starting with `/leia`:
 /leia add x, update y and add a regression test for z
 ```
 
-The model is `gpt-6-luna` with high reasoning effort. Commands are polled centrally
-by the **LEIA agent commands** Actions workflow, normally every five minutes
-(GitHub scheduling can be delayed). Run that workflow manually to scan sooner.
-There is no model-controlled webhook server or application deployment.
+The model is `gpt-6-luna` with high reasoning effort. The **LEIA agent commands**
+Actions workflow checks commands centrally. The [signed event receiver](events/README.md)
+can wake it immediately after a comment, with a five-minute Cloudflare scheduled
+backup. The GitHub cron and manual run remain available; GitHub's own scheduled
+workflows can be delayed much longer than their configured interval. The model
+does not control the event receiver or application deployments.
 
 ## Scope and authorization
 

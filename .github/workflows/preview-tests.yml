@@ -19,7 +19,7 @@ jobs:
           node-version: '22'
       - run: npm ci --prefix previews
       - run: npm test --prefix previews
-      - run: node --test agent/*.test.mjs
+      - run: node --test agent/*.test.mjs agent/events/*.test.mjs
       - name: Verify generated Compose subsets
         run: |
           node previews/compose.mjs
