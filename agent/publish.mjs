@@ -31,7 +31,7 @@ export async function publish({github,request,artifact,verified,directory,checko
   }
   const created=await github.request(`${prefix}/trees`,'POST',{base_tree:head.tree.sha,tree});
   const title=request.mergeBase?'fix: resolve PR merge conflicts':'fix: apply LEIA agent request';
-  const commit=await github.request(`${prefix}/commits`,'POST',{message:`${title}\n\nRequested by @${request.actor} in PR #${request.number}. Independently verified before publication.\n\nLEIA-Command: ${request.commentId}`,
+  const commit=await github.request(`${prefix}/commits`,'POST',{message:`${title}\n\nRequested by @${request.actor} in PR #${request.number}, comment ${request.commentId}. Independently verified before publication.`,
     tree:created.sha,parents:[request.headSha,...(mergeRequired?[request.baseSha]:[])]});
   if(!/^[a-f0-9]{40}$/.test(commit?.sha||''))throw new Error('GitHub did not create a valid commit.');
   // Fresh membership, command, head and base checks immediately before publishing. No force push.

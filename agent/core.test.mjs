@@ -99,7 +99,7 @@ test('verified changes publish one non-forced commit with the expected parents a
   const artifact={patch:f.patch},verified={version:1,requestHash:hash(JSON.stringify(f.req)),patchHash:hash(f.patch),checks:[{result:'passed'},{result:'passed'}]};
   const result=await publish({github,request:f.req,artifact,verified,directory:join(f.root,'publish'),checkout:f.checkout});
   assert.equal(result.sha,'c'.repeat(40));
-  const commit=github.writes.find(row=>row.path.endsWith('/commits'));assert.deepEqual(commit.body.parents,[f.req.headSha]);assert.ok(!/Co-Authored-By/i.test(commit.body.message));
+  const commit=github.writes.find(row=>row.path.endsWith('/commits'));assert.deepEqual(commit.body.parents,[f.req.headSha]);assert.ok(!/Co-Authored-By/i.test(commit.body.message));assert.ok(commit.body.message.endsWith('Independently verified before publication.'));
   const update=github.writes.at(-1);assert.equal(update.method,'PATCH');assert.equal(update.body.force,false);assert.ok(update.path.includes('feature%2Fexample'));
 });
 test('unverified or mismatched artifacts never produce GitHub writes',async t=>{
