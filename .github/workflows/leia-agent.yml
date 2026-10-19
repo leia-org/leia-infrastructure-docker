@@ -74,8 +74,9 @@ jobs:
           effort: high
           codex-version: 0.163.0
           safety-strategy: drop-sudo
-          sandbox: workspace-write
-          codex-args: '["--ephemeral", "-c", "sandbox_workspace_write.network_access=true"]'
+          codex-home: ${{ runner.temp }}/leia-codex-home
+          permission-profile: leia-agent
+          codex-args: '["--ephemeral"]'
           allow-users: '*'
           allow-bots: 'true'
       - name: Export a bounded patch without publishing credentials
