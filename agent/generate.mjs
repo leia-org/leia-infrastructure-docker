@@ -10,14 +10,16 @@ try {
   const service=Object.keys(repositories).find(key=>repositories[key]===request.repository);
   if(operation==='prepare') {
     if(git(directory,['rev-parse','HEAD']).trim()!==request.headSha)throw new Error('Agent checkout does not match the requested PR commit.');
+    // A base merge can leave package.json with conflict markers. Select the
+    // mandatory checks from the immutable PR head, as the verifier does.
+    const pkg=JSON.parse(git(directory,['show',`${request.headSha}:package.json`]));
+    const checks=validationCommands(service,pkg.scripts||{}).map(([cmd,args])=>[cmd,...args].join(' '));
     if(request.mergeBase) {
       try{git(directory,['merge','--no-commit','--no-ff',request.baseSha],{env:{PATH:process.env.PATH,HOME:process.env.HOME,GIT_CONFIG_NOSYSTEM:'1',GIT_CONFIG_GLOBAL:'/dev/null',GIT_AUTHOR_NAME:'leia-org-bot[bot]',GIT_AUTHOR_EMAIL:'leia-org-bot[bot]@users.noreply.github.com',GIT_COMMITTER_NAME:'leia-org-bot[bot]',GIT_COMMITTER_EMAIL:'leia-org-bot[bot]@users.noreply.github.com'}});}catch {
         if(!git(directory,['ls-files','-u']).trim())throw new Error('Unable to prepare the base merge.');
       }
     }
     if(process.env.GITHUB_ENV)await appendFile(process.env.GITHUB_ENV,Object.entries(verificationEnvironment(service)).map(([key,value])=>`${key}=${value}\n`).join(''));
-    const pkg=JSON.parse(await readFile(resolve(directory,'package.json')));
-    const checks=validationCommands(service,pkg.scripts||{}).map(([cmd,args])=>[cmd,...args].join(' '));
     await mkdir(output,{recursive:true});
     const codexHome=resolve(output,'..','leia-codex-home');
     await mkdir(codexHome,{recursive:true});

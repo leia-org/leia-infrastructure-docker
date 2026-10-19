@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdtemp,writeFile,readFile,mkdir,rm,symlink} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
+import {execFileSync} from 'node:child_process';
 import {command,requestFrom,authorize,hash,allowedPath,validationCommands} from './core.mjs';
 import {scan} from './scan.mjs';
 import {git,checkedPatch,exportPatch} from './git.mjs';
@@ -117,6 +118,23 @@ test('a real merge conflict can be resolved into a two-parent commit',async t=>{
   const github=api({current:{...pr,head:{...pr.head,sha:head},base:{...pr.base,sha:base}}});
   await publish({github,request:req,artifact:{patch},verified:{version:1,requestHash:hash(JSON.stringify(req)),patchHash:hash(patch),checks:[{result:'passed'},{result:'passed'}]},directory:join(f.root,'merged'),checkout:f.checkout});
   assert.deepEqual(github.writes.find(row=>row.path.endsWith('/commits')).body.parents,[head,base]);
+});
+test('generation prepares a conflicted package.json using checks from the original PR head',async t=>{
+  const f=await fixture(t);
+  git(f.source,['checkout','-b','base']);
+  await writeFile(join(f.source,'package.json'),JSON.stringify({scripts:{test:'base-test'}}));
+  git(f.source,['add','.']);git(f.source,['commit','-qm','base package change']);const base=git(f.source,['rev-parse','HEAD']).trim();
+  git(f.source,['checkout','-b','feature',f.req.headSha]);
+  await writeFile(join(f.source,'package.json'),JSON.stringify({scripts:{test:'feature-test'}}));
+  git(f.source,['add','.']);git(f.source,['commit','-qm','feature package change']);const head=git(f.source,['rev-parse','HEAD']).trim();
+  const req={...f.req,headSha:head,baseSha:base,mergeBase:true},requests=join(f.root,'requests.json'),output=join(f.root,'result');
+  await writeFile(requests,JSON.stringify([req]));
+  execFileSync(process.execPath,[new URL('./generate.mjs',import.meta.url).pathname,'prepare',String(req.commentId),requests,f.source,output],
+    {env:{PATH:process.env.PATH,HOME:process.env.HOME},stdio:'pipe'});
+  assert.match(await readFile(join(f.source,'package.json'),'utf8'),/<<<<<<< HEAD/);
+  assert.ok(git(f.source,['ls-files','-u']).includes('package.json'));
+  assert.match(await readFile(join(output,'prompt.md'),'utf8'),/npm test -- --run/);
+  assert.ok((await readFile(join(f.root,'leia-codex-home','config.toml'),'utf8')).includes('leia-agent'));
 });
 test('a head change immediately before publication never updates the branch',async t=>{
   const f=await fixture(t),github=api({current:{...pr,head:{...pr.head,sha:f.req.headSha},base:{...pr.base,sha:f.req.baseSha}}});
