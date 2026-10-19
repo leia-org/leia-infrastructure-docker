@@ -5,6 +5,33 @@ import {githubClient} from '../previews/github.mjs';
 import {agentStateStore} from './state.mjs';
 import {authorize,validateRequest,hash,reply} from './core.mjs';
 import {prepareCheckout,checkedPatch,git} from './git.mjs';
+async function proposeProtectedBranchFix({github,request,commit,treeSha,message,parents,checks}) {
+  const repository=request.repository,branch=`fix/leia-pr-${request.number}-command-${request.commentId}`;
+  const reference=`repos/${repository}/git/ref/heads/${branch}`;
+  const existing=await github.request(reference);
+  if(existing) {
+    const previous=await github.request(`repos/${repository}/git/commits/${existing.object?.sha}`);
+    if(previous?.tree?.sha!==treeSha || previous.message!==message || JSON.stringify(previous.parents?.map(row=>row.sha))!==JSON.stringify(parents))throw new Error('The repair branch already exists with different contents or parents.');
+    commit={sha:existing.object.sha};
+  }else {
+    await authorize({...github,isMember:github.isMemberFresh||github.isMember},request);
+    await github.request(`repos/${repository}/git/refs`,'POST',{ref:`refs/heads/${branch}`,sha:commit.sha});
+  }
+  const path=`repos/${repository}/pulls`;
+  const existingPrs=await github.request(`${path}?state=all&head=${encodeURIComponent(`leia-org:${branch}`)}&base=${encodeURIComponent(request.headRef)}`);
+  if(!Array.isArray(existingPrs) || existingPrs.length>1)throw new Error('Cannot identify the owned repair PR.');
+  let repair=existingPrs[0];
+  if(repair && (repair.state!=='open' || repair.user?.login!=='leia-org-bot[bot]' || repair.head?.sha!==commit.sha))throw new Error('An existing repair PR needs manual review.');
+  if(!repair) {
+    await authorize({...github,isMember:github.isMemberFresh||github.isMember},request);
+    repair=await github.request(path,'POST',{
+      title:request.mergeBase?`fix: resolve conflicts for PR #${request.number}`:`fix: apply LEIA request for PR #${request.number}`,
+      head:branch,base:request.headRef,
+      body:`Prepared for [PR #${request.number}](https://github.com/${repository}/pull/${request.number}) from [this command](https://github.com/${repository}/pull/${request.number}#issuecomment-${request.commentId}) by @${request.actor}.\n\nThe source branch \`${request.headRef}\` is protected, so this verified change requires normal PR review. No branch protection was bypassed.\n\nIndependent checks:\n${checks.map(row=>`- \`${row.command}\`: passed`).join('\n')}\n\n${request.mergeBase?'Use **Create a merge commit** when merging this repair PR to preserve both branch histories and resolve the original PR conflicts. Squashing or rebasing can discard the required merge ancestry.':'Merge this repair PR after normal checks and approval to apply the requested change.'}\n\nThe original PR stays open; this bot does not merge either PR.`});
+  }
+  if(!Number.isSafeInteger(repair?.number) || repair.html_url!==`https://github.com/${repository}/pull/${repair.number}`)throw new Error('GitHub did not return a valid repair PR.');
+  return {sha:commit.sha,url:`https://github.com/${repository}/commit/${commit.sha}`,pullRequestUrl:repair.html_url,repairBranch:branch};
+}
 export async function publish({github,request,artifact,verified,directory,checkout=prepareCheckout}) {
   validateRequest(request);
   if(verified?.version!==1 || verified.requestHash!==hash(JSON.stringify(request)) || verified.patchHash!==hash(artifact.patch) ||
@@ -17,6 +44,8 @@ export async function publish({github,request,artifact,verified,directory,checko
     try{git(directory,['merge-base','--is-ancestor',request.baseSha,request.headSha]);}catch{mergeRequired=true;}
   }
   if(!files.length && !mergeRequired)return {unchanged:true};
+  const branch=await github.request(`repos/${request.repository}/branches/${encodeURIComponent(request.headRef)}`);
+  if(branch?.commit?.sha!==request.headSha || typeof branch.protected!=='boolean')throw new Error('Cannot verify the source branch and its protection status.');
   const prefix=`repos/${request.repository}/git`;
   const head=await github.request(`${prefix}/commits/${request.headSha}`);
   if(!head?.tree?.sha)throw new Error('Cannot resolve the original PR tree.');
@@ -33,11 +62,13 @@ export async function publish({github,request,artifact,verified,directory,checko
   // as a second parent. GitHub rejects creation of a tree with no entries.
   const created=tree.length?await github.request(`${prefix}/trees`,'POST',{base_tree:head.tree.sha,tree}):head.tree;
   const title=request.mergeBase?'fix: resolve PR merge conflicts':'fix: apply LEIA agent request';
-  const commit=await github.request(`${prefix}/commits`,'POST',{message:`${title}\n\nRequested by @${request.actor} in PR #${request.number}, comment ${request.commentId}. Independently verified before publication.`,
-    tree:created.sha,parents:[request.headSha,...(mergeRequired?[request.baseSha]:[])]});
+  const message=`${title}\n\nRequested by @${request.actor} in PR #${request.number}, comment ${request.commentId}. Independently verified before publication.`;
+  const parents=[request.headSha,...(mergeRequired?[request.baseSha]:[])];
+  const commit=await github.request(`${prefix}/commits`,'POST',{message,tree:created.sha,parents});
   if(!/^[a-f0-9]{40}$/.test(commit?.sha||''))throw new Error('GitHub did not create a valid commit.');
   // Fresh membership, command, head and base checks immediately before publishing. No force push.
   await authorize({...github,isMember:github.isMemberFresh||github.isMember},request);
+  if(branch.protected)return proposeProtectedBranchFix({github,request,commit,treeSha:created.sha,message,parents,checks:verified.checks});
   await github.request(`${prefix}/refs/heads/${encodeURIComponent(request.headRef)}`,'PATCH',{sha:commit.sha,force:false});
   return {sha:commit.sha,url:`https://github.com/${request.repository}/commit/${commit.sha}`};
 }
@@ -51,10 +82,11 @@ export async function finalize({github,store,requests,artifacts,runId}) {
     try {
       const {artifact,verified}=await artifacts(request);
       const result=await publish({github,request,artifact,verified,directory});
-      Object.assign(entry,{status:'complete',updatedAt:new Date().toISOString(),...(result.sha?{commitSha:result.sha}:{})});
+      Object.assign(entry,{status:'complete',updatedAt:new Date().toISOString(),...(result.sha?{commitSha:result.sha}:{}),...(result.pullRequestUrl?{repairPullRequestUrl:result.pullRequestUrl}:{})});
       await store.save(state);
       const checks=verified.checks.map(row=>`- \`${row.command}\`: passed`).join('\n');
-      await reply(github,request,`### LEIA agent\n${result.unchanged?'No commit was necessary; the requested result is already present.':`Added [commit ${result.sha.slice(0,7)}](${result.url}) to \`${request.headRef}\`.`}\n\nIndependent verification in a clean container:\n${checks}\n\n[Run details](https://github.com/leia-org/leia-infrastructure-docker/actions/runs/${runId}). The PR remains open for review.`).catch(()=>{console.error('Published result could not be acknowledged in the PR.');});
+      const outcome=result.pullRequestUrl?`The source branch \`${request.headRef}\` is protected. Prepared [a repair PR](${result.pullRequestUrl}) with [commit ${result.sha.slice(0,7)}](${result.url}) for review. ${request.mergeBase?'Merge that repair PR using **Create a merge commit** to preserve the merge ancestry and resolve these conflicts.':'Merge that repair PR after normal review to apply the requested change.'}`:result.unchanged?'No commit was necessary; the requested result is already present.':`Added [commit ${result.sha.slice(0,7)}](${result.url}) to \`${request.headRef}\`.`;
+      await reply(github,request,`### LEIA agent\n${outcome}\n\nIndependent verification in a clean container:\n${checks}\n\n[Verification details](https://github.com/leia-org/leia-infrastructure-docker/actions/runs/${runId}). The original PR remains open; no branch protection was bypassed.`).catch(()=>{console.error('Published result could not be acknowledged in the PR.');});
     }catch(error) {
       console.error(`Command ${request.commentId}: ${error.message}`);
       failures++;Object.assign(entry,{status:'failed',updatedAt:new Date().toISOString()});await store.save(state);
