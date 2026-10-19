@@ -1,0 +1,14 @@
+{
+  "name": "leia-agent-events",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-10-18",
+  "account_id": "1c23ec6d7c1d53acdf8ab3ce4d0dac5d",
+  "workers_dev": true,
+  "preview_urls": false,
+  "vars": {
+    "LEIA_BOT_APP_ID": "5369466",
+    "LEIA_BOT_INSTALLATION_ID": "172724374"
+  },
+  "triggers": {"crons": ["*/5 * * * *"]},
+  "observability": {"enabled": true, "head_sampling_rate": 1}
+}
