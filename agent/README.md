@@ -40,7 +40,9 @@ If someone pushes while the agent works, the bot stops instead of overwriting it
 2. An isolated job checks out the exact PR head. Conflict requests (or a PR that
    GitHub already reports as conflicting) merge the exact base with `--no-commit`.
    The Codex GitHub Action runs the model with workspace write access, a proxy for
-   the OpenAI API key and sudo removed. It can inspect code, edit, run tests and
+   the OpenAI API key and sudo removed. A trusted permission profile enables
+   package-registry/GitHub downloads and local test servers through a domain
+   allowlist, while keeping Git metadata read-only. It can inspect code, edit, run tests and
    iterate. It never receives a GitHub write token or hosting credentials.
 3. A separate clean runner applies only a bounded patch and runs dependency
    installation and mandatory checks in a container without host credentials,

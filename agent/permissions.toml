@@ -1,0 +1,32 @@
+default_permissions = "leia-agent"
+
+[features]
+network_proxy = true
+
+[permissions.leia-agent]
+description = "Edit the PR workspace and test with package registry access."
+extends = ":workspace"
+
+[permissions.leia-agent.filesystem]
+"~/.npm" = "write"
+
+[permissions.leia-agent.filesystem.":workspace_roots"]
+".github/workflows" = "read"
+".github/actions" = "read"
+".env" = "deny"
+".env.local" = "deny"
+".env.pre" = "deny"
+".env.production" = "deny"
+
+[permissions.leia-agent.network]
+enabled = true
+
+[permissions.leia-agent.network.domains]
+"registry.npmjs.org" = "allow"
+"registry.yarnpkg.com" = "allow"
+"github.com" = "allow"
+"codeload.github.com" = "allow"
+"objects.githubusercontent.com" = "allow"
+"release-assets.githubusercontent.com" = "allow"
+"localhost" = "allow"
+"127.0.0.1" = "allow"
