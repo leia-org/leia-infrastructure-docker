@@ -18,6 +18,7 @@ function api({member=true,current=pr,currentComment=comment}={}) {
   return {writes,isMember:async()=>member,request:async(path,method='GET',body)=>{
     if(method!=='GET'){writes.push({path,method,body});return path.endsWith('/commits')?{sha:'c'.repeat(40)}:{sha:'d'.repeat(40)};}
     if(path.endsWith('/pulls/9'))return current;
+    if(path.includes('/branches/'))return {protected:false,commit:{sha:current.head.sha}};
     if(path.endsWith('/issues/comments/12'))return currentComment;
     if(path.includes('/issues/comments?'))return path.startsWith(`repos/${repository}/`)?[comment]:[];
     if(path.includes('/comments?'))return [];
@@ -159,4 +160,36 @@ test('a head change immediately before publication never updates the branch',asy
   github.isMemberFresh=async()=>false;
   await assert.rejects(publish({github,request:f.req,artifact:{patch:f.patch},verified:{version:1,requestHash:hash(JSON.stringify(f.req)),patchHash:hash(f.patch),checks:[{result:'passed'},{result:'passed'}]},directory:join(f.root,'revoked'),checkout:f.checkout}),/active leia-org/);
   assert.equal(github.writes.some(row=>row.path.includes('/refs/heads/')),false);
+});
+test('protected source branches receive one repair PR without bypassing protection',async t=>{
+  const f=await fixture(t),github=api({current:{...pr,head:{...pr.head,sha:f.req.headSha},base:{...pr.base,sha:f.req.baseSha}}});
+  const normal=github.request;let reference=null,repair=null;
+  github.request=async(path,method='GET',body)=>{
+    if(path.includes('/branches/'))return {protected:true,commit:{sha:f.req.headSha}};
+    if(path.includes('/git/ref/heads/fix/'))return reference;
+    if(path.endsWith('/git/refs')&&method==='POST'){github.writes.push({path,method,body});reference={object:{sha:body.sha}};return reference;}
+    if(path.includes('/git/commits/') && reference?.object.sha===path.split('/').at(-1))return {tree:{sha:'d'.repeat(40)},message:github.writes.find(row=>row.path.endsWith('/commits')).body.message,parents:[{sha:f.req.headSha}]};
+    if(path.includes('/pulls?state=all&'))return repair?[repair]:[];
+    if(path.endsWith('/pulls')&&method==='POST'){github.writes.push({path,method,body});repair={number:21,state:'open',html_url:`https://github.com/${repository}/pull/21`,user:{login:'leia-org-bot[bot]'},head:{sha:'c'.repeat(40)}};return repair;}
+    return normal(path,method,body);
+  };
+  const args={github,request:f.req,artifact:{patch:f.patch},verified:{version:1,requestHash:hash(JSON.stringify(f.req)),patchHash:hash(f.patch),checks:[{command:'npm ci --include=dev',result:'passed'},{command:'npm test -- --run',result:'passed'}]},checkout:f.checkout};
+  const result=await publish({...args,directory:join(f.root,'protected')});assert.equal(result.pullRequestUrl,`https://github.com/${repository}/pull/21`);
+  await publish({...args,directory:join(f.root,'protected-retry')});
+  assert.equal(github.writes.filter(row=>row.path.endsWith('/pulls')&&row.method==='POST').length,1);
+  assert.equal(github.writes.filter(row=>row.path.endsWith('/git/refs')).length,1);
+  assert.equal(github.writes.some(row=>row.method==='PATCH'),false);
+  const proposal=github.writes.find(row=>row.path.endsWith('/pulls'));
+  assert.equal(proposal.body.base,'feature/example');assert.equal(proposal.body.head,'fix/leia-pr-9-command-12');
+  assert.ok(!/Co-Authored-By/i.test(proposal.body.body));
+});
+test('a repair branch with unexpected contents cannot be reused or updated',async t=>{
+  const f=await fixture(t),github=api({current:{...pr,head:{...pr.head,sha:f.req.headSha},base:{...pr.base,sha:f.req.baseSha}}}),normal=github.request;
+  github.request=async(path,method,...args)=>{
+    if(path.includes('/branches/'))return {protected:true,commit:{sha:f.req.headSha}};
+    if(path.includes('/git/ref/heads/fix/'))return {object:{sha:'f'.repeat(40)}};
+    return normal(path,method,...args);
+  };
+  await assert.rejects(publish({github,request:f.req,artifact:{patch:f.patch},verified:{version:1,requestHash:hash(JSON.stringify(f.req)),patchHash:hash(f.patch),checks:[{result:'passed'},{result:'passed'}]},directory:join(f.root,'occupied'),checkout:f.checkout}),/different contents or parents/);
+  assert.equal(github.writes.some(row=>row.path.endsWith('/git/refs')||row.method==='PATCH'),false);
 });

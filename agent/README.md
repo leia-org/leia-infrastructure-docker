@@ -22,8 +22,10 @@ The six supported repositories are Auth, Designer frontend/backend, Workbench
 frontend/backend and Runner. A command must come from an active organization
 member and refer to an open PR targeting `develop` or `main`. Its head must be in
 the same repository and cannot be `main`. A release PR from `develop` to `main`
-is supported if branch protections allow the bot's commit; protections are never
-bypassed. Forks, ordinary issues, quoted commands and bot comments do not run.
+is supported. When the source branch is protected, the bot opens a repair PR into
+that branch for normal review and approval; protections are never bypassed.
+Merge conflict repair PRs with **Create a merge commit** to preserve the ancestry
+needed to resolve the original PR. Forks, ordinary issues, quoted commands and bot comments do not run.
 
 The initial scan records an activation time and ignores older comments. Each
 comment ID is claimed durably before executing the model and processed once.
@@ -56,7 +58,9 @@ If someone pushes while the agent works, the bot stops instead of overwriting it
 4. Only a trusted publisher receives an App token with Contents write permission.
    It requires the independent verification job to succeed, checks artifact and
    request hashes, validates file paths and rechecks current authorization. It
-   creates one GitHub commit and updates the PR branch without force. A conflict
+   creates one GitHub commit and updates an unprotected PR branch without force.
+   Protected source branches receive a separate repair PR, without changing their
+   protection settings. A conflict
    resolution uses both exact original head and base as parents. No PR is merged.
 
 The bot maintains one response per command with the resulting commit, mandatory
