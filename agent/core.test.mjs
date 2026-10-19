@@ -63,6 +63,8 @@ test('mandatory validation covers frontend builds, backend tests and Runner unit
   assert.deepEqual(validationCommands('auth',{test:'vitest'}),[['npm',['test','--','--run']]]);
   assert.deepEqual(validationCommands('runner',{'test:unit':'vitest run'}),[['npm',['run','test:unit']]]);
   assert.equal(validationCommands('designer_frontend',{'test:preview':'node --test'}).length,2);
+  assert.deepEqual(validationCommands('workbench_frontend',{build:'vite build'}),[['npm',['run','build']]]);
+  assert.deepEqual(validationCommands('workbench_frontend',{'build:pre':'vite build --mode pre'}),[['npm',['run','build:pre']]]);
 });
 async function fixture(t) {
   const root=await mkdtemp(join(tmpdir(),'leia-agent-test-'));t.after(()=>rm(root,{recursive:true,force:true}));

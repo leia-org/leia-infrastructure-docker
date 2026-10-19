@@ -1,8 +1,9 @@
-import {readFile,writeFile,mkdir} from 'node:fs/promises';
+import {readFile,writeFile,mkdir,appendFile} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {validateRequest,validationCommands} from './core.mjs';
 import {git,exportPatch} from './git.mjs';
 import {repositories} from '../previews/manifest.mjs';
+import {verificationEnvironment} from './environment.mjs';
 const [operation,id,requestsFile,directory,output]=process.argv.slice(2);
 try {
   const request=validateRequest(JSON.parse(await readFile(requestsFile)).find(row=>String(row.commentId)===id));
@@ -14,6 +15,7 @@ try {
         if(!git(directory,['ls-files','-u']).trim())throw new Error('Unable to prepare the base merge.');
       }
     }
+    if(process.env.GITHUB_ENV)await appendFile(process.env.GITHUB_ENV,Object.entries(verificationEnvironment(service)).map(([key,value])=>`${key}=${value}\n`).join(''));
     const pkg=JSON.parse(await readFile(resolve(directory,'package.json')));
     const checks=validationCommands(service,pkg.scripts||{}).map(([cmd,args])=>[cmd,...args].join(' '));
     await mkdir(output,{recursive:true});

@@ -13,10 +13,6 @@ extends = ":workspace"
 [permissions.leia-agent.filesystem.":workspace_roots"]
 ".github/workflows" = "read"
 ".github/actions" = "read"
-".env" = "deny"
-".env.local" = "deny"
-".env.pre" = "deny"
-".env.production" = "deny"
 
 [permissions.leia-agent.network]
 enabled = true

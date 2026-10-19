@@ -47,7 +47,7 @@ If someone pushes while the agent works, the bot stops instead of overwriting it
 3. A separate clean runner applies only a bounded patch and runs dependency
    installation and mandatory checks in a container without host credentials,
    Docker socket access or privileged capabilities. Frontends run their preview
-   tests when available and `build:pre`; APIs run Vitest once; Runner runs its unit
+   tests when available and `build:pre` (or `build` on branches predating it); APIs run Vitest once; Runner runs its unit
    suite (or Jest for branches predating that suite). Mandatory package scripts
    cannot be replaced by agent-generated no-op scripts. Any failure blocks the
    commit. This does not run against production data or credentials; tests needing

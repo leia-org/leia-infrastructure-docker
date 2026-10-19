@@ -60,7 +60,7 @@ export function allowedPath(path) {
 }
 export function validationCommands(service,scripts) {
   if(service.endsWith('_frontend')) return [
-    ...(scripts['test:preview']?[['npm',['run','test:preview']]]:[]),['npm',['run','build:pre']]];
+    ...(scripts['test:preview']?[['npm',['run','test:preview']]]:[]),['npm',['run',scripts['build:pre']?'build:pre':'build']]];
   if(service==='runner') return scripts['test:unit']?[['npm',['run','test:unit']]]:[['npm',['test','--','--runInBand']]];
   return [['npm',['test','--','--run']]];
 }
