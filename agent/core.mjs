@@ -54,7 +54,7 @@ export async function reply(github,request,text) {
 export function allowedPath(path) {
   if(typeof path!=='string' || !path.length || path.length>=500 || path.startsWith('/') || /[\x00-\x1f\\\ufffd]/.test(path) ||
     path.split('/').some(part=>part==='..' || part==='.git' || part==='.codex') ||
-    path.startsWith('.github/workflows/') || path.startsWith('.github/actions/') ||
+    path==='.github/workflows' || path==='.github/actions' || path.startsWith('.github/workflows/') || path.startsWith('.github/actions/') ||
     /(?:^|\/)(?:AGENTS\.md|.*\.(?:pem|key|p12|pfx))$/i.test(path))return false;
   return !/(?:^|\/)\.env(?:\..*)?$/i.test(path) || /(?:^|\/)\.env(?:\.[a-zA-Z0-9_-]+)*\.example$/.test(path);
 }

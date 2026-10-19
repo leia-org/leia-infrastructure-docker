@@ -10,10 +10,6 @@ extends = ":workspace"
 [permissions.leia-agent.filesystem]
 "~/.npm" = "write"
 
-[permissions.leia-agent.filesystem.":workspace_roots"]
-".github/workflows" = "read"
-".github/actions" = "read"
-
 [permissions.leia-agent.network]
 enabled = true
 
