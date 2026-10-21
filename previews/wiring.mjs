@@ -12,7 +12,7 @@ export function createEnvironmentVariables(plan, source, mongoAdminUri, previous
   for (const service of requiredDatabases) credentials[service] ||= {username:names[service],password:secret()};
   const oldAuth = previous.AUTH_CONFIG_JSON ? JSON.parse(previous.AUTH_CONFIG_JSON) : {};
   const isolated = plan.isolation === 'full';
-  const common = {PORT:'3000', NODE_ENV:'production', CORS_PREVIEW_DOMAINS:'designer.leia.ovh,workbench.leia.ovh'};
+  const common = {PORT:'3000', NODE_ENV:'production', LEIA_ENVIRONMENT:'preview', PRE_TEST_LOGIN_ENABLED:'false', CORS_PREVIEW_DOMAINS:'designer.leia.ovh,workbench.leia.ovh'};
   // Partial environments must accept pre identities and service-to-service credentials.
   // Separate signing keys are valid only when every backend is isolated together.
   if (isolated) Object.assign(common, {JWT_SECRET:oldAuth.JWT_SECRET || secret(),

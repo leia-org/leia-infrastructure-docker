@@ -4,7 +4,9 @@ import {repositories} from './manifest.mjs';
 
 const production=JSON.parse(await readFile(new URL('./production.json',import.meta.url),'utf8'));
 const keyPattern=/^[A-Z][A-Z0-9_]*$/;
-const excluded=new Set(['CORS_PREVIEW_DOMAINS','TURNSTILE_BYPASS_TOKEN','SKIP_DEPENDENCY_INSTALL']);
+const excluded=new Set(['CORS_PREVIEW_DOMAINS','TURNSTILE_BYPASS_TOKEN','SKIP_DEPENDENCY_INSTALL',
+  'CLOUDFLARE_ACCESS_TEAM_DOMAIN','CLOUDFLARE_ACCESS_TEST_LOGIN_AUD']);
+const productionSafety={LEIA_ENVIRONMENT:'production',PRE_TEST_LOGIN_ENABLED:'false'};
 const neutral=new Set(['ACCESS_TOKEN_EXPIRES_IN','SESSION_TOKEN_EXPIRES_IN','SESSION_COOKIE_MAX_AGE_SECONDS',
   'SESSION_COOKIE_SAME_SITE','SESSION_COOKIE_SECURE','JWT_AUDIENCE','AVATAR_KBYTES']);
 const domains=['auth','designer','workbench','backend.designer','backend.workbench','runner','images'];
@@ -16,7 +18,8 @@ export function productionOverrides(text) {
   for(const [service,env] of Object.entries(values)) {
     if(!Object.hasOwn(repositories,service) || !plain(env)) throw new Error('Unknown service or invalid production environment object.');
     for(const [key,value] of Object.entries(env)) {
-      if(!keyPattern.test(key) || typeof value!=='string' || !value.trim() || excluded.has(key) || (service.endsWith('_frontend') && !key.startsWith('VITE_'))) {
+      if(!keyPattern.test(key) || typeof value!=='string' || !value.trim() || excluded.has(key) ||
+        (Object.hasOwn(productionSafety,key) && value!==productionSafety[key]) || (service.endsWith('_frontend') && !key.startsWith('VITE_'))) {
         throw new Error('Production overrides require nonempty string values, supported keys and public VITE_ frontend variables.');
       }
       if(/https?:\/\/pre(?:[.-]|\d)|(?:mongodb|rediss?):\/\/[^\s]*\bpre\b/i.test(value)) throw new Error('Production overrides must not reference pre environments.');
@@ -26,6 +29,7 @@ export function productionOverrides(text) {
 }
 export function resolveProductionValue(key,value) {
   if(excluded.has(key)) return undefined;
+  if(Object.hasOwn(productionSafety,key)) return productionSafety[key];
   if(key==='AUTH_ALLOWED_ORIGINS') return origins;
   if(key==='SESSION_COOKIE_NAME') return 'leia_session';
   if(typeof value!=='string' || !value.trim()) return undefined;
@@ -43,8 +47,9 @@ export function environmentPlan({service,source,target,declared=[],overrides={},
     if(excluded.has(key)) {skipped.push(key);continue;}
     const exists=Object.hasOwn(target,key);
     const explicit=Object.hasOwn(overrides,key);
-    if(exists && !(updateExisting && explicit)) {kept++;continue;}
-    const value=explicit?overrides[key]:resolveProductionValue(key,source[key]?.value);
+    const safety=Object.hasOwn(productionSafety,key);
+    if(exists && !safety && !(updateExisting && explicit)) {kept++;continue;}
+    const value=safety?productionSafety[key]:explicit?overrides[key]:resolveProductionValue(key,source[key]?.value);
     if(value===undefined) {missing.push(key);continue;}
     const desired={value,is_secret:service.endsWith('_frontend')?false:undefined};
     if(exists && target[key].value===value && target[key].is_secret!==true) {kept++;continue;}

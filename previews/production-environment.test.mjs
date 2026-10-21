@@ -35,6 +35,15 @@ test('new credentials never inherit pre values; summaries contain names only',()
   assert.deepEqual(summary.missing,['NEW_API_TOKEN']);assert.deepEqual(patch,{});
   assert.ok(!environmentSummary([summary]).includes('sensitive-pre-value'));
 });
+test('test-account login can never be enabled by promotion, including existing production drift',()=>{
+  const {patch,summary}=environmentPlan({service:'auth',source:{LEIA_ENVIRONMENT:env('pre'),PRE_TEST_LOGIN_ENABLED:env('true'),
+    CLOUDFLARE_ACCESS_TEST_LOGIN_AUD:env('pre-audience'),CLOUDFLARE_ACCESS_TEAM_DOMAIN:env('team.cloudflareaccess.com')},
+    target:{LEIA_ENVIRONMENT:env('pre'),PRE_TEST_LOGIN_ENABLED:env('true')},overrides:{PRE_TEST_LOGIN_ENABLED:'true'}});
+  assert.equal(patch.LEIA_ENVIRONMENT.value,'production');assert.equal(patch.PRE_TEST_LOGIN_ENABLED.value,'false');
+  assert.equal(summary.missing.length,0);assert.equal(summary.skipped.length,2);
+  assert.throws(()=>productionOverrides('{"auth":{"PRE_TEST_LOGIN_ENABLED":"true"}}'));
+  assert.throws(()=>productionOverrides('{"auth":{"LEIA_ENVIRONMENT":"pre"}}'));
+});
 test('known URLs and neutral session options map to production; bypass and preview CORS stay excluded',()=>{
   assert.equal(resolveProductionValue('JWT_ISSUER','https://pre.auth.leia.ovh'),'https://auth.leia.ovh');
   assert.equal(resolveProductionValue('VITE_IMAGE_PUBLIC_URL','https://pre.images.leia.ovh'),'https://images.leia.ovh');
