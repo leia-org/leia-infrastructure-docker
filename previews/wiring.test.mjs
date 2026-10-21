@@ -28,6 +28,11 @@ test('full isolation uses private dependencies, own signing keys and scoped data
   assert.equal(wb.MANAGER_URL,'http://designer-test-change:3000');assert.equal(wb.AUTH_URL,'http://auth-test-change:3000');
   assert.equal(designer.S3_ACCESS_KEY_ID,'');assert.notEqual(designer.S3_BUCKET,'pre-bucket');
 });
+test('cloned Auth never inherits the stable pre test-account capability',()=>{
+  const vars=createEnvironmentVariables(plan(['auth']),{...source,auth:{...source.auth,LEIA_ENVIRONMENT:'pre',PRE_TEST_LOGIN_ENABLED:'true'}},uri);
+  const auth=JSON.parse(vars.AUTH_CONFIG_JSON);
+  assert.equal(auth.LEIA_ENVIRONMENT,'preview');assert.equal(auth.PRE_TEST_LOGIN_ENABLED,'false');
+});
 test('adding a backend preserves existing database credentials and test data',()=>{
   const before=createEnvironmentVariables(plan(['workbench_backend']),source,uri);
   const after=createEnvironmentVariables(plan(['workbench_backend','designer_backend']),source,uri,before);

@@ -1,10 +1,10 @@
 name: Preview coordinator tests
 on:
   pull_request:
-    paths: ['previews/**', 'agent/**', '.github/workflows/preview-tests.yml', '.github/workflows/leia-agent.yml']
+    paths: ['previews/**', 'agent/**', 'test-login/**', '.github/workflows/preview-tests.yml', '.github/workflows/leia-agent.yml']
   push:
     branches: [main, build/coolify-linked-previews]
-    paths: ['previews/**', 'agent/**', '.github/workflows/preview-tests.yml', '.github/workflows/leia-agent.yml']
+    paths: ['previews/**', 'agent/**', 'test-login/**', '.github/workflows/preview-tests.yml', '.github/workflows/leia-agent.yml']
 permissions:
   contents: read
 jobs:
@@ -20,6 +20,7 @@ jobs:
       - run: npm ci --prefix previews
       - run: npm test --prefix previews
       - run: node --test agent/*.test.mjs agent/events/*.test.mjs
+      - run: node --test test-login/*.test.mjs
       - name: Verify generated Compose subsets
         run: |
           node previews/compose.mjs
