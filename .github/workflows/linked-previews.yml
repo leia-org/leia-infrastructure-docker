@@ -1,0 +1,152 @@
+name: Linked PR previews
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: Deploy and reconcile owned previews
+        type: boolean
+        default: false
+  schedule:
+    - cron: '*/5 * * * *'
+# One lock covers prepare, unprivileged builds, publication and finalization.
+concurrency:
+  group: leia-linked-previews
+  cancel-in-progress: false
+permissions: {}
+jobs:
+  plan:
+    if: github.event_name == 'workflow_dispatch' && !inputs.apply
+    runs-on: ubuntu-24.04
+    permissions: {contents: read}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: {node-version: '22'}
+      - run: npm ci --prefix previews
+      - run: node previews/app-token.mjs
+        env:
+          LEIA_BOT_APP_ID: ${{ vars.LEIA_BOT_APP_ID }}
+          LEIA_BOT_INSTALLATION_ID: ${{ vars.LEIA_BOT_INSTALLATION_ID }}
+          LEIA_BOT_PRIVATE_KEY: ${{ secrets.LEIA_BOT_PRIVATE_KEY }}
+      - run: node previews/pipeline.mjs plan
+        env: {GITHUB_TOKEN: '${{ github.token }}'}
+  prepare:
+    if: (github.event_name == 'workflow_dispatch' && inputs.apply) || (github.event_name == 'schedule' && vars.LEIA_PREVIEWS_ENABLED == 'true')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions: {contents: write}
+    outputs:
+      matrix: ${{ steps.prepare.outputs.matrix }}
+      has_frontends: ${{ steps.prepare.outputs.has_frontends }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: {node-version: '22'}
+      - run: npm ci --prefix previews
+      - run: node previews/app-token.mjs
+        env:
+          LEIA_BOT_APP_ID: ${{ vars.LEIA_BOT_APP_ID }}
+          LEIA_BOT_INSTALLATION_ID: ${{ vars.LEIA_BOT_INSTALLATION_ID }}
+          LEIA_BOT_PRIVATE_KEY: ${{ secrets.LEIA_BOT_PRIVATE_KEY }}
+      - id: prepare
+        run: node previews/pipeline.mjs prepare preview-plan.json
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+          CLOUDFLARE_DNS_TOKEN: ${{ secrets.CLOUDFLARE_DNS_TOKEN }}
+          CLOUDFLARE_WORKERS_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_TOKEN }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with: {name: trusted-preview-plan, path: preview-plan.json, retention-days: 1}
+  build:
+    needs: prepare
+    if: needs.prepare.outputs.has_frontends == 'true'
+    runs-on: ubuntu-24.04
+    permissions: {contents: read}
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {path: trusted, persist-credentials: false}
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: ${{ matrix.repository }}
+          ref: ${{ matrix.commit }}
+          path: application
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: {node-version: '22'}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with: {name: trusted-preview-plan, path: plan}
+      - run: npm ci --prefix trusted/previews
+      # This runner has no Coolify, Cloudflare or GitHub App credentials.
+      - run: node trusted/previews/frontend.mjs build plan/preview-plan.json "$PREVIEW_ENVIRONMENT" "$PREVIEW_SERVICE" application
+        env:
+          PREVIEW_ENVIRONMENT: ${{ matrix.environment }}
+          PREVIEW_SERVICE: ${{ matrix.service }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ${{ matrix.artifact }}
+          path: application/dist
+          if-no-files-found: error
+          retention-days: 1
+  publish:
+    needs: [prepare, build]
+    # Publish each available artifact even if a different PR's build failed.
+    # A missing artifact fails only its own publication job.
+    if: always() && needs.prepare.result == 'success' && needs.prepare.outputs.has_frontends == 'true'
+    runs-on: ubuntu-24.04
+    permissions: {contents: read}
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: {node-version: '22'}
+      - run: npm ci --prefix previews
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with: {name: trusted-preview-plan, path: plan}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: ${{ matrix.artifact }}
+          path: static-assets
+      - run: node previews/app-token.mjs
+        env:
+          LEIA_BOT_APP_ID: ${{ vars.LEIA_BOT_APP_ID }}
+          LEIA_BOT_INSTALLATION_ID: ${{ vars.LEIA_BOT_INSTALLATION_ID }}
+          LEIA_BOT_PRIVATE_KEY: ${{ secrets.LEIA_BOT_PRIVATE_KEY }}
+      - run: node previews/frontend.mjs publish plan/preview-plan.json "$PREVIEW_ENVIRONMENT" "$PREVIEW_SERVICE" static-assets
+        env:
+          PREVIEW_ENVIRONMENT: ${{ matrix.environment }}
+          PREVIEW_SERVICE: ${{ matrix.service }}
+          CLOUDFLARE_WORKERS_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_TOKEN }}
+  finalize:
+    needs: [prepare, build, publish]
+    if: always() && needs.prepare.result == 'success'
+    runs-on: ubuntu-24.04
+    permissions: {contents: write}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: {node-version: '22'}
+      - run: npm ci --prefix previews
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with: {name: trusted-preview-plan, path: plan}
+      - run: node previews/app-token.mjs
+        env:
+          LEIA_BOT_APP_ID: ${{ vars.LEIA_BOT_APP_ID }}
+          LEIA_BOT_INSTALLATION_ID: ${{ vars.LEIA_BOT_INSTALLATION_ID }}
+          LEIA_BOT_PRIVATE_KEY: ${{ secrets.LEIA_BOT_PRIVATE_KEY }}
+      - run: node previews/pipeline.mjs finalize plan/preview-plan.json
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+          CLOUDFLARE_DNS_TOKEN: ${{ secrets.CLOUDFLARE_DNS_TOKEN }}
+          CLOUDFLARE_WORKERS_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_TOKEN }}
