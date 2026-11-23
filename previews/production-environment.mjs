@@ -7,6 +7,14 @@ const keyPattern=/^[A-Z][A-Z0-9_]*$/;
 const excluded=new Set(['CORS_PREVIEW_DOMAINS','TURNSTILE_BYPASS_TOKEN','SKIP_DEPENDENCY_INSTALL',
   'CLOUDFLARE_ACCESS_TEAM_DOMAIN','CLOUDFLARE_ACCESS_TEST_LOGIN_AUD']);
 const productionSafety={LEIA_ENVIRONMENT:'production',PRE_TEST_LOGIN_ENABLED:'false'};
+// Runner supplies safe runtime defaults for these settings. Keep an unset
+// production value unset, even if PRE has a different setting.
+const runnerRuntimeDefaults = new Set([
+  'ALMA_BASE_URL',
+  'ALMA_EVALUATION_MAX_TOKENS',
+  'ALMA_HISTORY_MAX_MESSAGES',
+  'SESSION_TTL_SECONDS',
+]);
 const neutral=new Set(['ACCESS_TOKEN_EXPIRES_IN','SESSION_TOKEN_EXPIRES_IN','SESSION_COOKIE_MAX_AGE_SECONDS',
   'SESSION_COOKIE_SAME_SITE','SESSION_COOKIE_SECURE','JWT_AUDIENCE','AVATAR_KBYTES']);
 const domains=['auth','designer','workbench','backend.designer','backend.workbench','runner','images'];
@@ -49,6 +57,10 @@ export function environmentPlan({service,source,target,declared=[],overrides={},
     const explicit=Object.hasOwn(overrides,key);
     const safety=Object.hasOwn(productionSafety,key);
     if(exists && !safety && !(updateExisting && explicit)) {kept++;continue;}
+    if (service === 'runner' && !explicit && runnerRuntimeDefaults.has(key)) {
+      skipped.push(key);
+      continue;
+    }
     const value=safety?productionSafety[key]:explicit?overrides[key]:resolveProductionValue(key,source[key]?.value);
     if(value===undefined) {missing.push(key);continue;}
     const desired={value,is_secret:service.endsWith('_frontend')?false:undefined};
