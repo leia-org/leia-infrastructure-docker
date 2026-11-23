@@ -73,6 +73,26 @@ test('new declared example keys require production values even when pre is missi
   const complete=await f.withOverrides({auth:{NEW_SECRET:'production-only'}});await complete.apply();
   assert.equal(f.writes[0].body.data.find(row=>row.key==='NEW_SECRET').value,'production-only');
 });
+test('Runner leaves optional settings at their runtime defaults unless PROD supplies a value', () => {
+  const declared = [
+    'ALMA_BASE_URL',
+    'ALMA_EVALUATION_MAX_TOKENS',
+    'ALMA_HISTORY_MAX_MESSAGES',
+    'SESSION_TTL_SECONDS',
+    'NEW_RUNNER_SECRET',
+  ];
+  const source = { ALMA_BASE_URL: env('https://pre.example.test/model'), SESSION_TTL_SECONDS: env('300') };
+  const target = { ALMA_HISTORY_MAX_MESSAGES: env('30') };
+  const options = { service: 'runner', source, target, declared };
+  const { summary, patch } = environmentPlan(options);
+  assert.deepEqual(summary.missing, ['NEW_RUNNER_SECRET']);
+  assert.deepEqual(summary.skipped, ['ALMA_BASE_URL', 'ALMA_EVALUATION_MAX_TOKENS', 'SESSION_TTL_SECONDS']);
+  assert.equal(summary.kept, 1);
+  assert.deepEqual(patch, {});
+  assert.equal(environmentPlan({ ...options, overrides: { SESSION_TTL_SECONDS: '3600' } })
+    .patch.SESSION_TTL_SECONDS.value, '3600');
+  assert.ok(environmentPlan({ ...options, service: 'auth' }).summary.missing.includes('SESSION_TTL_SECONDS'));
+});
 test('manual production drift prevents every planned write',async()=>{
   const f=fixture({drift:true});const plan=await f.run();await assert.rejects(plan.apply(),/changed while planning/);assert.equal(f.writes.length,0);
 });
