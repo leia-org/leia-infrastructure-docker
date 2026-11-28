@@ -78,15 +78,24 @@ test('Runner leaves optional settings at their runtime defaults unless PROD supp
     'ALMA_BASE_URL',
     'ALMA_EVALUATION_MAX_TOKENS',
     'ALMA_HISTORY_MAX_MESSAGES',
+    'CONVERSATION_CACHE_ENABLED',
+    'LANGFUSE_TRACE_CONTENT',
     'SESSION_TTL_SECONDS',
     'NEW_RUNNER_SECRET',
   ];
-  const source = { ALMA_BASE_URL: env('https://pre.example.test/model'), SESSION_TTL_SECONDS: env('300') };
+  const source = {
+    ALMA_BASE_URL: env('https://pre.example.test/model'),
+    CONVERSATION_CACHE_ENABLED: env('true'),
+    LANGFUSE_TRACE_CONTENT: env('redacted'),
+    SESSION_TTL_SECONDS: env('300'),
+  };
   const target = { ALMA_HISTORY_MAX_MESSAGES: env('30') };
   const options = { service: 'runner', source, target, declared };
   const { summary, patch } = environmentPlan(options);
   assert.deepEqual(summary.missing, ['NEW_RUNNER_SECRET']);
-  assert.deepEqual(summary.skipped, ['ALMA_BASE_URL', 'ALMA_EVALUATION_MAX_TOKENS', 'SESSION_TTL_SECONDS']);
+  assert.deepEqual(summary.skipped, [
+    'ALMA_BASE_URL', 'ALMA_EVALUATION_MAX_TOKENS', 'CONVERSATION_CACHE_ENABLED', 'LANGFUSE_TRACE_CONTENT', 'SESSION_TTL_SECONDS',
+  ]);
   assert.equal(summary.kept, 1);
   assert.deepEqual(patch, {});
   assert.equal(environmentPlan({ ...options, overrides: { SESSION_TTL_SECONDS: '3600' } })
